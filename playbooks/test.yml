@@ -1,0 +1,8 @@
+---
+- hosts: node
+  collections:
+    - opennebula.deploy
+  roles:
+    - role: common
+    - role: helper/facts
+    - role: bond
