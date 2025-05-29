@@ -1,0 +1,246 @@
+---
+- delegate_to: "{{ leader }}"
+  block:
+    - name: "Force sync on host {{ ansible_host }}" 
+      become: true
+      become_user: oneadmin
+      changed_when: false
+      ansible.builtin.shell: |
+        onehost forceupdate {{ ansible_host }}
+
+    - name: "Wait for vm {{ vm_name }} to register as wild on host {{ ansible_host }}"
+      register: vm_template_shell
+      changed_when: false
+      failed_when: |
+        vm_name not in (
+          (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS 
+          | split(',')
+          | map('trim') 
+          | list
+        )
+      retries: "{{ vm_register_retries }}"
+      delay: "{{ vm_register_delay }}"
+      until: |
+        (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS is defined and
+        vm_name in (
+          (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS 
+          | split(',') 
+          | map('trim') 
+          | list
+        )
+      ansible.builtin.shell: |
+        onehost show {{ ansible_host }} --json
+
+- block:
+    - name: "Get disk info from vm {{ vm_name }}"
+      changed_when: false
+      register: vm_disk_location_shell
+      ansible.builtin.shell: |
+        virsh domblklist --details {{ vm_name }} | tail -n +3 | awk '$2 == "disk" { print $4 }'
+
+    - name: "Get nic info from vm {{ vm_name }}"
+      changed_when: false
+      register: vm_interface_shell
+      ansible.builtin.shell: |
+        virsh domiflist {{ vm_name }} | tail -n +3 | awk '$2 == "bridge" { print $3 }'
+
+    - name: Set vm facts
+      ansible.builtin.set_fact:
+        # Used in vm_template.txt.j2
+        onevnet_ids: []
+        total_virtual_disk_bytes: 0
+        disk_log_dir: "{{ one_tmp_dir }}/logs/{{ vm_name }}"
+        xml_dump_file: "{{ vm_disk_location_shell.stdout_lines[0] | dirname }}/{{ vm_name }}.xml.bak"
+
+    - name: Gather network info
+      loop: "{{ vm_interface_shell.stdout_lines }}"
+      loop_control:
+        loop_var: bridge
+      ansible.builtin.include_tasks: gather_network_info.yml
+
+    - name: "Dump xml from vm {{ vm_name }} on host {{ ansible_host }}"
+      when: vm_disk_location_shell.stdout_lines | length > 0
+      changed_when: false
+      ansible.builtin.shell: |
+        virsh dumpxml {{ vm_name }} > {{ xml_dump_file }}
+
+    - name: Update dump file permissions
+      changed_when: false
+      ansible.builtin.shell: |
+        chown oneadmin:oneadmin {{ xml_dump_file }}
+
+    - name: "Shutdown vm {{ vm_name }} on host {{ ansible_host }}"
+      delegate_to: "{{ ansible_host }}"
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        virsh destroy {{ vm_name }}
+
+    # - loop: "{{ vm_disk_location_shell.stdout_lines }}"
+    #   loop_control:
+    #     loop_var: disk_location
+    #   ansible.builtin.include_tasks: disk_size.yml
+
+    # - name: Get available space in the target directory's filesystem
+    #   delegate_to: "{{ leader }}"
+    #   ansible.builtin.shell: "df -B1 --output=avail {{ oneimage_datastore_dir }}"
+    #   register: df_output_shell
+    #   changed_when: false
+
+    # - name: Extract available bytes from df output
+    #   ansible.builtin.set_fact:
+    #     available_directory_bytes: "{{ df_output_shell.stdout_lines[1] }}"
+
+    # - name: "Compare total disk storage for vm {{ vm_name }} with available directory at {{ oneimage_datastore_dir }}"
+    #   ansible.builtin.assert:
+    #     that:
+    #       - (total_virtual_disk_bytes | int) <= (available_directory_bytes | int)
+    #     fail_msg: |
+    #       ERROR: Total virtual disk size ({{ ((total_virtual_disk_bytes | int) / (1024*1024)) | round(2) }} MB) 
+    #       is GREATER than available space ({{ ((available_directory_bytes | int) / (1024*1024)) | round(2) }} MB) 
+    #       in {{ oneimage_datastore_dir }}
+    #     success_msg: |
+    #       SUCCESS: Total virtual disk size ({{ ((total_virtual_disk_bytes | int) / (1024*1024)) | round(2) }} MB) 
+    #       is LESS than or EQUAL to available space ({{ ((available_directory_bytes | int) / (1024*1024)) | round(2) }} MB) 
+    #       in {{ oneimage_datastore_dir }}
+  rescue:
+    - name: "Restart vm {{ vm_name }} on host {{ ansible_host }} after failing to get disk storage"
+      delegate_to: "{{ ansible_host }}"
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        virsh start {{ vm_name }}
+
+    - name: Set disk error fact
+      ansible.builtin.set_fact:
+        disk_error: true  
+  always:
+    - name: "Failing after disk operation failure"
+      when: disk_error is defined
+      ansible.builtin.fail:
+        msg: "Review above tasks for error that occured when trying to get disk size info"
+
+- when: ds.mode == "ssh"
+  block:
+    - delegate_to: "{{ leader }}"
+      block:
+        - name: Set disks facts
+          ansible.builtin.set_fact:
+            vm_disk_datastore_dir: "{{ oneimage_datastore_dir }}/{{ vm_name }}"
+            oneimage_disk_ids: []
+
+        - name: "Create directory for vm's '{{ vm_name }}' disks"
+          ansible.builtin.file:
+            owner: oneadmin
+            group: oneadmin
+            path: "{{ vm_disk_datastore_dir }}"
+            state: directory
+            mode: '0750'
+
+        - name: "Add host {{ ansible_host }} to known hosts file"
+          ansible.builtin.known_hosts:
+            name: "{{ ansible_host }}"
+            key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
+
+    - name: "Looping through disks for vm {{ vm_name }}"
+      loop: "{{ vm_disk_location_shell.stdout_lines }}"
+      loop_control:
+        loop_var: disk_location
+      ansible.builtin.include_tasks: disk.yml
+
+    - name: "Start vm {{ vm_name }} on host {{ ansible_host }}"
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        virsh start {{ vm_name }}
+
+- delegate_to: "{{ leader }}"
+  block:
+    - name: "Import vm {{ vm_name }} from host {{ ansible_host }}"
+      changed_when: false
+      ansible.builtin.shell: |
+        onehost importvm {{ ansible_host }} {{ vm_name }}
+
+    - name: "Grab info from vm {{ vm_name }}"
+      changed_when: false
+      register: vm_json_data_shell
+      ansible.builtin.shell: | 
+        onevm show --json "{{ vm_name }}"
+
+    - name: "Extract info from vm {{ vm_name }}"
+      vars:
+        _vm_json: "{{ vm_json_data_shell.stdout | from_json }}"
+      ansible.builtin.set_fact:
+        onetemplate_vm_path: "{{ vm_template_dir }}/{{ vm_name }}.txt"
+        vm_json_data: "{{ _vm_json }}"
+        vm_template: "{{ _vm_json.VM.TEMPLATE }}"
+        user_template: "{{ _vm_json.VM.USER_TEMPLATE }}"
+
+- name: "Terminate vm {{ vm_name }} on host {{ ansible_host }}"
+  delegate_to: "{{ ansible_host }}"
+  changed_when: false
+  failed_when: false
+  ansible.builtin.shell: |
+    virsh destroy {{ vm_name }}
+
+- delegate_to: "{{ leader }}"
+  block:
+    - name: "Force sync on host {{ ansible_host }}"
+      become: true
+      become_user: oneadmin
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        onehost forceupdate {{ ansible_host }}
+
+    - name: "Terminate vm {{ vm_name }} on host {{ ansible_host }}"
+      become: true
+      become_user: oneadmin
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        onevm terminate {{ vm_name }} --hard
+
+    # - name: "Extract info from vm {{ vm_name }}"
+    #   vars:
+    #     _vm_json: "{{ vm_json_data_shell.stdout | from_json }}"
+    #   ansible.builtin.set_fact:
+    #     onetemplate_vm_path: "{{ vm_template_dir }}/{{ vm_name }}.txt"
+    #     vm_json_data: "{{ _vm_json }}"
+    #     vm_template: "{{ _vm_json.VM.TEMPLATE }}"
+    #     user_template: "{{ _vm_json.VM.USER_TEMPLATE }}"
+
+    - name: "Check vm {{ vm_name }} is destroyed"
+      register: onehost_show_shell
+      until: > 
+        vm_json_data.VM.ID not in (
+          [onehost_show_shell.stdout 
+            | from_json 
+            | json_query('HOST.VMS.ID')] 
+            | flatten 
+            | select('defined') 
+            | list
+          )
+      retries: "{{ vm_register_retries }}"
+      delay: "{{ vm_register_delay }}"
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        onehost show {{ ansible_host }} --json
+
+    - name: "Generate txt template for vm {{ vm_name }}"
+      ansible.builtin.template:
+        owner: oneadmin
+        group: oneadmin
+        src: vm_template.txt.j2
+        dest: "{{ onetemplate_vm_path }}"
+
+    - name: "Create template for vm {{ vm_name }} and instantiate"
+      ansible.builtin.shell: |
+        onetemplate create {{ onetemplate_vm_path }}
+        onetemplate instantiate {{ vm_name }} --name {{ vm_name }}
+
+- name: "Backup disks from vm {{ vm_name }} on host {{ ansible_host }}"
+  when: vm_disk_location_shell.stdout_lines | length > 0
+  ansible.builtin.shell: |
+    mv {{ vm_disk_location_shell.stdout_lines[0] | dirname }} {{ disk_backup_dir }}

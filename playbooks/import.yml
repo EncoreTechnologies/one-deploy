@@ -1,0 +1,10 @@
+---
+- hosts: node
+  serial: 1
+  collections:
+    - opennebula.deploy
+  roles:
+    - role: common
+    - role: helper/facts
+    - role: kvm
+    - role: import

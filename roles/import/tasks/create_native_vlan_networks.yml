@@ -1,0 +1,43 @@
+---
+- delegate_to: "{{ leader }}"
+  block:
+    - name: Set import native vlan network facts
+      ansible.builtin.set_fact:
+        native_vlan_network_file_path: "{{ nw_template_dir }}/{{ native_vlan.name }}.txt"
+        vn_native_vlan: "{{ native_vlan.name }}"
+        vn_mac_ar_size: "{{ native_vlan.mac_ar_size | default(vn_mac_ar_size) }}"
+
+    - name: "Check if native vlan network {{ vn_vlan_name }} already exists"
+      register: native_vlan_check_shell
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        onevnet show {{ native_vlan.name }} --json
+
+    - when: native_vlan_check_shell.rc != 0
+      block:
+        - name: "Generate native vlan template {{ native_vlan_network_file_path }}"
+          ansible.builtin.template:
+            src: nw_native_vlan_template.txt.j2
+            dest: "{{ native_vlan_network_file_path }}"
+            owner: oneadmin
+            group: oneadmin
+            mode: '0644'
+
+        - name: "Create native vlan network {{ native_vlan.name }}"
+          register: native_vlan_create_shell
+          changed_when: false
+          ansible.builtin.shell: |
+            onevnet create {{ native_vlan_network_file_path }}
+
+        - name: Append network id to list
+          ansible.builtin.set_fact:
+            network_names: "{{ network_names + [native_vlan_create_shell.stdout | split(':') | last | trim] }}"
+
+    - name: "Get vnet id for network {{ native_vlan.name }}"
+      when: native_vlan_check_shell.rc == 0
+      vars:
+        _network_template: "{{ native_vlan_check_shell.stdout | from_json }}"
+        _network_id: "{{ _network_template.VNET.ID }}"
+      ansible.builtin.set_fact:
+        network_names: "{{ network_names + [_network_id] }}"

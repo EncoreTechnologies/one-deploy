@@ -1,0 +1,13 @@
+---
+ds:
+  mode: ssh
+oneimage_datastore_name: default
+oneimage_datastore_dir: /var/lib/one/datastores/1
+node_datastore_dir: /var/lib/one/datastores/0
+one_tmp_dir: /var/tmp/one
+vm_register_retries: 5
+vm_register_delay: 5
+vms_to_import: []
+vlans_to_import: []
+native_vlans_to_import: []
+vn_mac_ar_size: 254

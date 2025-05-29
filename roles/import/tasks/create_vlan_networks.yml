@@ -1,0 +1,33 @@
+---
+- delegate_to: "{{ leader }}"
+  block:
+    - name: Set import vlan network facts
+      ansible.builtin.set_fact:
+        vlan_network_file_path: "{{ nw_template_dir }}/{{ network.value.vlan_name }}.txt"
+        vn_vlan_name: "{{ network.value.vlan_name }}"
+        vn_vlan_id: "{{ network.value.vlan_id }}"
+        vn_phydev: "{{ network.value.phydev }}"
+        vn_bridge: "{{ network.key }}"
+        vn_mac_ar_size: "{{ network.value.mac_ar_size }}"
+
+    - name: "Check if vlan network {{ vn_vlan_name }} already exists"
+      register: vlan_check_shell
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        onevnet show {{ vn_vlan_name }}
+
+    - when: vlan_check_shell.rc != 0
+      block:
+        - name: "Generate vlan template {{ vlan_network_file_path }}"
+          ansible.builtin.template:
+            src: nw_vlan_template.txt.j2
+            dest: "{{ vlan_network_file_path }}"
+            owner: oneadmin
+            group: oneadmin
+            mode: '0644'
+
+        - name: "Create vlan network {{ vn_vlan_name }}"
+          changed_when: false
+          ansible.builtin.shell: |
+            onevnet create {{ vlan_network_file_path }}
