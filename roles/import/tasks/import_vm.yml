@@ -1,36 +1,4 @@
 ---
-- delegate_to: "{{ leader }}"
-  block:
-    - name: "Force sync on host {{ ansible_host }}" 
-      become: true
-      become_user: oneadmin
-      changed_when: false
-      ansible.builtin.shell: |
-        onehost forceupdate {{ ansible_host }}
-
-    - name: "Wait for vm {{ vm_name }} to register as wild on host {{ ansible_host }}"
-      register: vm_template_shell
-      changed_when: false
-      failed_when: |
-        vm_name not in (
-          (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS 
-          | split(',')
-          | map('trim') 
-          | list
-        )
-      retries: "{{ vm_register_retries }}"
-      delay: "{{ vm_register_delay }}"
-      until: |
-        (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS is defined and
-        vm_name in (
-          (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS 
-          | split(',') 
-          | map('trim') 
-          | list
-        )
-      ansible.builtin.shell: |
-        onehost show {{ ansible_host }} --json
-
 - block:
     - name: "Get disk info from vm {{ vm_name }}"
       changed_when: false
@@ -156,6 +124,36 @@
 
 - delegate_to: "{{ leader }}"
   block:
+    - name: "Force sync on host {{ ansible_host }}" 
+      become: true
+      become_user: oneadmin
+      changed_when: false
+      ansible.builtin.shell: |
+        onehost forceupdate {{ ansible_host }}
+
+    - name: "Wait for vm {{ vm_name }} to register as wild on host {{ ansible_host }}"
+      register: vm_template_shell
+      changed_when: false
+      failed_when: |
+        vm_name not in (
+          (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS 
+          | split(',')
+          | map('trim') 
+          | list
+        )
+      retries: "{{ vm_register_retries }}"
+      delay: "{{ vm_register_delay }}"
+      until: |
+        (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS is defined and
+        vm_name in (
+          (vm_template_shell.stdout | from_json).HOST.TEMPLATE.WILDS 
+          | split(',') 
+          | map('trim') 
+          | list
+        )
+      ansible.builtin.shell: |
+        onehost show {{ ansible_host }} --json
+
     - name: "Import vm {{ vm_name }} from host {{ ansible_host }}"
       changed_when: false
       ansible.builtin.shell: |

@@ -35,7 +35,7 @@
         group: oneadmin
         path: "{{ disk_log_file }}"
         state: touch
-        mode: '0750'
+        mode: '0644'
 
     - name: "Copying disk '{{ disk_name }}' from vm '{{ vm_name }}' to frontend"
       become: yes
