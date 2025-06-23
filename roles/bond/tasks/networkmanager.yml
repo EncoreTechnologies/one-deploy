@@ -1,0 +1,97 @@
+- name: Get nmcli connection names
+  ansible.builtin.shell: >
+    nmcli --terse --fields NAME connection show --active | awk '{ print $1 }'
+  changed_when: false
+  register: nmcli_conn_shell
+
+- name: Create bonds
+  loop: "{{ if_bonds | d({}) | dict2items }}"
+  when: item.key not in nmcli_conn_shell.stdout_lines
+  ansible.builtin.shell: |
+    nmcli c add type bond con-name {{ item.key }}
+    {%- if 'ifname' not in item.value %}
+      ifname {{ item.key }} \
+    {% endif %}
+    {%- for option, value in item.value.items() -%}
+      {%- if option != 'additional_config' and option != 'ifname' %}
+        {{ option }} {{ value }}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if item.value['additional_config'] is defined -%}
+      {%- for cfg_key, cfg_val in item.value['additional_config'].items() -%}
+        {%- for k, v in cfg_val.items() %}
+          {{ cfg_key }}.{{ k }} {{ v | string }}
+        {%- endfor -%}
+      {%- endfor -%}
+    {%- endif %}
+
+    nmcli c up {{ item.key }} 
+
+- name: Create bridges
+  loop: "{{ if_bridges | d({}) | dict2items }}"
+  when: item.key not in nmcli_conn_shell.stdout_lines
+  ansible.builtin.shell: |
+    nmcli c add type bridge con-name {{ item.key }}
+    {%- if 'ifname' not in item.value %}
+      ifname {{ item.key }} \
+    {% endif %}
+    {%- for option, value in item.value.items() -%}
+      {%- if option != 'additional_config' %}
+        {{ option }} {{ value }}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if item.value['additional_config'] is defined -%}
+      {%- for cfg_key, cfg_val in item.value['additional_config'].items() -%}
+        {%- for k, v in cfg_val.items() %}
+          {{ cfg_key }}.{{ k }} {{ v | string }}
+        {%- endfor -%}
+      {%- endfor -%}
+    {%- endif %}
+
+    nmcli c up {{ item.key }} 
+
+- name: Create slaves
+  loop: "{{ if_slaves | d({}) | dict2items }}"
+  when: item.key not in nmcli_conn_shell.stdout_lines
+  ansible.builtin.shell: |
+    nmcli c add con-name {{ item.key }}
+    {%- if 'ifname' not in item.value %}
+      ifname {{ item.key }} \
+    {% endif %}
+    {%- for option, value in item.value.items() -%}
+      {%- if option != 'additional_config' %}
+        {{ option }} {{ value }}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if item.value['additional_config'] is defined -%}
+      {%- for cfg_key, cfg_val in item.value['additional_config'].items() -%}
+        {%- for k, v in cfg_val.items() %}
+          {{ cfg_key }}.{{ k }} {{ v | string }}
+        {%- endfor -%}
+      {%- endfor -%}
+    {%- endif %}
+
+    nmcli c up {{ item.key }} 
+
+- name: Create vlans
+  loop: "{{ if_vlans | d({}) | dict2items }}"
+  when: item.key not in nmcli_conn_shell.stdout_lines
+  ansible.builtin.shell: |
+    nmcli c add type vlan con-name {{ item.key }}
+    {%- if 'ifname' not in item.value %}
+      ifname {{ item.key }} \
+    {% endif %}
+    {%- for option, value in item.value.items() -%}
+      {%- if option != 'additional_config' %}
+        {{ option }} {{ value }}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if item.value['additional_config'] is defined -%}
+      {%- for cfg_key, cfg_val in item.value['additional_config'].items() -%}
+        {%- for k, v in cfg_val.items() %}
+          {{ cfg_key }}.{{ k }} {{ v | string }}
+        {%- endfor -%}
+      {%- endfor -%}
+    {%- endif %}  
+
+    nmcli c up {{ item.key }} 

@@ -5,7 +5,7 @@ server {
         server_name {{ one_fqdn | d(one_vip) | d(hostvars[leader].ansible_host) }};
 
         ### Permanent redirect to HTTPS (optional)
-        return 301 $scheme://$server_name:$server_port$request_uri;
+        return 301 https://$server_name$request_uri;
 }
 
 #### cloudserver.org HTTPS virtual host
