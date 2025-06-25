@@ -3,16 +3,20 @@
   block:
     - name: Set import native vlan network facts
       ansible.builtin.set_fact:
-        native_vlan_network_file_path: "{{ nw_template_dir }}/{{ native_vlan.name }}.txt"
-        vn_native_vlan: "{{ native_vlan.name }}"
+        native_vlan_network_file_path: "{{ nw_template_dir }}/{{ native_vlan.key }}.txt"
+        vn_native_vlan: "{{ native_vlan.key }}"
+        vn_native_vlan_name: "{{ native_vlan.value.template_name | d(native_vlan.key) }}"
         vn_mac_ar_size: "{{ native_vlan.mac_ar_size | default(vn_mac_ar_size) }}"
+      tags:
+        - import
 
-    - name: "Check if native vlan network {{ vn_vlan_name }} already exists"
+    - name: "Check if native vlan network {{ vn_native_vlan_name }} already exists"
+      ansible.builtin.command: "onevnet show {{ vn_native_vlan_name }} --json"
       register: native_vlan_check_shell
       changed_when: false
       failed_when: false
-      ansible.builtin.shell: |
-        onevnet show {{ native_vlan.name }} --json
+      tags:
+        - import
 
     - when: native_vlan_check_shell.rc != 0
       block:
@@ -23,21 +27,12 @@
             owner: oneadmin
             group: oneadmin
             mode: '0644'
+          tags:
+            - import
 
-        - name: "Create native vlan network {{ native_vlan.name }}"
+        - name: "Create native vlan network {{ native_vlan.key }}"
+          ansible.builtin.command: "onevnet create {{ native_vlan_network_file_path }}"
           register: native_vlan_create_shell
           changed_when: false
-          ansible.builtin.shell: |
-            onevnet create {{ native_vlan_network_file_path }}
-
-        - name: Append network id to list
-          ansible.builtin.set_fact:
-            network_names: "{{ network_names + [native_vlan_create_shell.stdout | split(':') | last | trim] }}"
-
-    - name: "Get vnet id for network {{ native_vlan.name }}"
-      when: native_vlan_check_shell.rc == 0
-      vars:
-        _network_template: "{{ native_vlan_check_shell.stdout | from_json }}"
-        _network_id: "{{ _network_template.VNET.ID }}"
-      ansible.builtin.set_fact:
-        network_names: "{{ network_names + [_network_id] }}"
+          tags:
+            - import

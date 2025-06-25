@@ -1,0 +1,40 @@
+---
+- name: Loop through bridge connections
+  loop: "{{ networkmanager_config.bridges | d({}) | dict2items }}"
+  vars:
+    conn: "{{ item }}"
+    conn_type: bridges
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/nm_conn_file.yml"
+  tags:
+    - connections
+
+- name: Loop through bond connections
+  loop: "{{ networkmanager_config.bonds | d({}) | dict2items }}"
+  vars:
+    conn: "{{ item }}"
+    conn_type: bonds
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/nm_conn_file.yml"
+  tags:
+    - connections
+
+- name: Loop through vlan connections
+  loop: "{{ networkmanager_config.vlans | d({}) | dict2items }}"
+  vars:
+    conn: "{{ item }}"
+    conn_type: vlans
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/nm_conn_file.yml"
+  tags:
+    - connections
+
+- name: Loop through slave connections
+  loop: "{{ networkmanager_config.ethernets | d({}) | dict2items  }}"
+  vars:
+    conn: "{{ item }}"
+    conn_type: ethernets
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/nm_conn_file.yml"
+  tags:
+    - connections

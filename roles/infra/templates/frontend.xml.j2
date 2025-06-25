@@ -1,6 +1,6 @@
 <domain type='kvm'>
-  <name>{{ frontend }}</name>
-  <title>{{ frontend }}</title>
+  <name>{{ frontend_vm_name | d(frontend) }}</name>
+  <title>{{ frontend_vm_name | d(frontend) }}</title>
 
   <memory unit='KiB'>{{ memory_KiB }}</memory>
   <vcpu placement='static'>{{ vcpu_static }}</vcpu>
@@ -35,7 +35,7 @@
   <devices>
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
-      <source file='{{ runtime_dir }}/{{ frontend }}.iso' index='1'/>
+      <source file='{{ runtime_dir }}/{{ frontend_vm_name | d(frontend) }}.iso' index='1'/>
       <backingStore/>
       <target dev='hda' bus='ide'/>
       <readonly/>
@@ -43,14 +43,25 @@
       <address type='drive' controller='0' bus='0' target='0' unit='0'/>
     </disk>
 
-    <disk type='file' device='disk'>
-      <driver name='qemu' type='qcow2' cache='unsafe' discard='unmap'/>
-      <source file='{{ runtime_dir }}/{{ frontend }}.qcow2' index='2'/>
-      <backingStore/>
-      <target dev='sda' bus='scsi'/>
-      <alias name='scsi0-0-0-0'/>
-      <address type='drive' controller='0' bus='0' target='0' unit='0'/>
-    </disk>
+    {% if disk_bus_type == 'scsi' %}
+      <disk type='file' device='disk'>
+        <driver name='qemu' type='qcow2' cache='unsafe' discard='unmap'/>
+        <source file='{{ runtime_dir }}/{{ frontend_vm_name | d(frontend) }}.qcow2' index='2'/>
+        <backingStore/>
+        <target dev='sda' bus='scsi'/>
+        <alias name='scsi0-0-0-0'/>
+        <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+      </disk>
+    {% elif disk_bus_type == 'virtio' %}
+      <disk type='file' device='disk'>
+        <driver name='qemu' type='qcow2' cache='unsafe' discard='unmap'/>
+        <source file='{{ runtime_dir }}/{{ frontend_vm_name | d(frontend) }}.qcow2' index='2'/>
+        <backingStore/>
+        <target dev='vda' bus='virtio'/>
+        <alias name='virtio-disk0'/>
+        <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+      </disk>
+    {% endif %}
 
     <controller type='scsi' index='0' model='virtio-scsi'>
       <driver queues='1'/>
@@ -85,7 +96,7 @@
     <interface type='bridge'>
       <mac address='{{ context.ETH0_MAC | d("02:01:%02x:%02x:%02x:%02x" | format(*(context.ETH0_IP.split(".") | map("int")))) }}'/>
       <source bridge='{{ infra_bridge }}'/>
-      <target dev='{{ frontend }}-nic0'/>
+      <target dev='{{ target_dev }}'/>
       <model type='virtio'/>
       <alias name='net0'/>
       <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>

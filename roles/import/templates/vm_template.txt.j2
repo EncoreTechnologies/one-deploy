@@ -1,37 +1,21 @@
-{% macro render_block(key, value, indent=0) -%}
-{%- set exclude_list = ['VMID', 'IMPORTED', 'AUTOMATIC_REQUIREMENTS', 'GRAPHICS']-%}
-{%- set prefix = '  ' * indent -%}
-{%- if value is string or value is number or value is boolean -%}
-{%- if key not in exclude_list -%}
-{{ prefix }}{{ key }} = "{{ value }}"
-{%- endif -%}
-{%- elif value is mapping -%}
-{{ prefix }}{{ key }} = [
-{%- for sub_key, sub_val in value.items() %}
-{{ render_block(sub_key, sub_val, indent + 1) }}{% if not loop.last %},{% endif %}
-{%- endfor %}
-{{ prefix }}]
-{%- elif value is sequence -%}
-{%- for item in value %}
-{{ render_block(key, item, indent) }}
-{%- endfor %}
-{%- endif %}
-{%- endmacro %}
-
 NAME = "{{ vm_name }}"
-{% for key, value in vm_template.items() %}
-{{ render_block(key, value) }}
-{% endfor %}
-{% for key, value in user_template.items() %}
-{{ render_block(key, value) }}
-{% endfor %}
+CPU = "{{ vm_cpu }}"
+MEMORY = "{{ vm_mem }}"
+{% if vm_pinned_host_id != '' %}
+SCHED_REQUIREMENTS = "HYPERVISOR={{ vm_hypervisor }} & ID = {{ vm_pinned_host_id }}"
+{% endif %}
 {% for id in oneimage_disk_ids %}
 DISK = [IMAGE_ID = "{{ id }}"]
 {% endfor %}
 {% for id in onevnet_ids %}
 NIC = [NETWORK_ID = "{{ id }}"]
 {% endfor %}
+HYPERVISOR = "{{ vm_hypervisor }}"
 CONTEXT = [
   NETWORK = "YES",
   SSH_PUBLIC_KEY = "$USER[SSH_PUBLIC_KEY]"
+]
+GRAPHICS = [
+  TYPE = "VNC",
+  LISTEN = "0.0.0.0"
 ]

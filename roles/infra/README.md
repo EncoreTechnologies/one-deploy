@@ -17,6 +17,7 @@ Role Variables
 | `infra_group`            | `str`  | `infra`            |                     | Custom name of the Infra group in the inventory.                  |
 |                          |        |                    |                     |                                                                   |
 | `runtime_dir`            | `str`  | `/var/one-deploy/` |                     | Directory used to store QCOW2 and ISO images.                     |
+| ``            | `str`  | `/var/one-deploy/` |                     | Directory used to store QCOW2 and ISO images.                     |
 | `os_image_url`           | `str`  | (check below)      |                     | HTTP(S) link to Debian/RedHat-like image running `one-contextd`.  |
 | `os_image_size`          | `str`  | `20G`              |                     | The size to which one-deploy will **try** to adjust the OS image. |
 | `memory_KiB`             | `str`  | `2097152`          |                     | Memory amount to be set in XML in Libvirt.                        |
@@ -24,8 +25,10 @@ Role Variables
 | `vnc_max_port`           | `str`  | `65535`            |                     | Upper limit for VNC ports to start counting-down from.            |
 | `infra_bridge`           | `str`  | `br0`              |                     | Pre-defined bridge interface to insert VM NICs to.                |
 | `passthrough_fs`         | `list` | `[]`               | (check below)       | Shared HV filesystems to attach to the Front-end VMs.             |
-|                          |        |                    |                     |                                                                   |
+| `disk_bus_type`          | `str`  | `scsi`             |                     | Disk bus type for primary disk on fe                              |
 | `infra_hostname`         | `str`  |                    | `n1a1`              | Defines on which HV machine the Front-end VM should be deployed.  |
+| `target_dev`             | `str`  |                    | `onecloud-01`       | Name of nic for frontend vm                                       |
+| `frontend_vm_name`       | `str`  |                    | `onecloud-01`       | Override for frontend vm seen in virsh                            |
 | `context.ETH0_DNS`       | `str`  |                    | `1.1.1.1`           | DNS server.                                                       |
 | `context.ETH0_GATEWAY`   | `str`  |                    | `10.2.50.1`         | Gateway.                                                          |
 | `context.ETH0_IP`        | `str`  |                    | `10.2.50.100`       | IPv4 address to be set on eth0.                                   |
@@ -33,6 +36,7 @@ Role Variables
 | `context.ETH0_MASK`      | `str`  |                    | `255.255.255.0`     | Network mask.                                                     |
 | `context.ETH0_NETWORK`   | `str`  |                    | `10.2.50.0`         | Network address.                                                  |
 | `context.GROW_FS`        | `str`  | `/`                |                     | Filesystems to grow.                                              |
+| `context.GROW_ROOTFS`    | `bool` | yes                |                     | Determines whether to grow root filesystem automatically          |
 | `context.PASSWORD`       | `str`  | `opennebula`       |                     | Root's password.                                                  |
 | `context.SET_HOSTNAME`   | `str`  | name of the FE VM  |                     | Hostname.                                                         |
 | `context.SSH_PUBLIC_KEY` | `str`  |                    | (check below)       | Root's extra authorized keys.                                     |

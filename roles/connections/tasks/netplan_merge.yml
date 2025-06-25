@@ -1,0 +1,44 @@
+---
+- name: Find all netplan configuration files on remote hosts
+  # The 'find' module locates all files ending with .yaml.
+  find:
+    paths: "{{ netplan_root_dir }}"
+    patterns: "*.yaml"
+  register: netplan_files
+  tags:
+    - connections
+
+- name: Sort the list of files found for correct merge precedence
+  set_fact:
+    sorted_netplan_file_paths: |
+      {{ netplan_files.files 
+          | sort(attribute='path') 
+          | map(attribute='path') 
+          | list 
+      }}
+  tags:
+    - connections
+
+- name: Slurp netplan content
+  loop: "{{ sorted_netplan_file_paths }}"
+  register: netplan_file_content
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  tags:
+    - connections
+
+- name: Set netplan merge facts
+  set_fact:
+    netplan_merged_config: {}
+  tags:
+    - connections
+
+- name: Read and merge each remote netplan file's content
+  loop: "{{ netplan_file_content.results }}"
+  set_fact:
+    netplan_merged_config: | 
+      {{ netplan_merged_config 
+          | combine(item.content | b64decode | from_yaml, recursive=True) 
+      }}
+  tags:
+    - connections

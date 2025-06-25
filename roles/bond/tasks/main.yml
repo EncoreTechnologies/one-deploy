@@ -1,6 +1,0 @@
----
-- vars:
-    _default_network_type: "{% if ansible_os_family == 'Debian' %}netplan{% else %}networkmanager{% endif %}"
-    _network_type: "{{ network_type | d(_default_network_type) }}"
-  ansible.builtin.include_tasks:
-    file: "{{ role_path }}/tasks/{{ _network_type }}.yml"
