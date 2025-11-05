@@ -1,0 +1,20 @@
+---
+fail_on_nm_bridge_change: true
+fail_on_nm_bond_change: true
+fail_on_nm_vlan_change: true
+fail_on_nm_ethernet_change: true
+
+fail_on_netplan_change: true
+
+bridge_change_override: true
+
+apply_network_change: true
+
+netplan_config:
+  update_type: generate
+
+networkmanager_config: {}
+
+dns_test_host: google.com
+dns_test_retries: 12
+dns_test_delay: 5

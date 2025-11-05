@@ -1,0 +1,25 @@
+---
+ds:
+  mode: ssh
+  config:
+    mounts:
+      - type: system
+        path: "/var/lib/one/datastores/0"
+      - type: image
+        path: "/var/lib/one/datastores/1"
+      - type: file
+        path: "/var/lib/one/datastores/2"
+
+oneimage_datastore_name: default
+one_tmp_dir: /var/tmp/one
+import_type: networks
+vm_register_retries: 5
+vm_register_delay: 5
+vms_to_import: []
+vlans_to_import: {}
+native_vlans_to_import: {}
+vn_mac_ar_size: 254
+vm_cpu: 4
+vm_mem: 8097792
+vnc_start_port: 5900
+vnc_end_port: 65534

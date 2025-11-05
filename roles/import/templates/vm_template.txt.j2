@@ -1,0 +1,21 @@
+NAME = "{{ vm_name }}"
+CPU = "{{ vm_cpu }}"
+MEMORY = "{{ vm_mem }}"
+{% if vm_pinned_host_id != '' %}
+SCHED_REQUIREMENTS = "HYPERVISOR={{ vm_hypervisor }} & ID = {{ vm_pinned_host_id }}"
+{% endif %}
+{% for id in oneimage_disk_ids %}
+DISK = [IMAGE_ID = "{{ id }}"]
+{% endfor %}
+{% for id in onevnet_ids %}
+NIC = [NETWORK_ID = "{{ id }}"]
+{% endfor %}
+HYPERVISOR = "{{ vm_hypervisor }}"
+CONTEXT = [
+  NETWORK = "YES",
+  SSH_PUBLIC_KEY = "$USER[SSH_PUBLIC_KEY]"
+]
+GRAPHICS = [
+  TYPE = "VNC",
+  LISTEN = "0.0.0.0"
+]

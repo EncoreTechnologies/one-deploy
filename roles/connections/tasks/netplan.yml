@@ -1,0 +1,83 @@
+---
+- name: Create tmp netplan directory
+  ansible.builtin.file:
+    path: /tmp/netplan/
+    state: directory
+  tags:
+    - connections
+
+- name: Loop netplan config and create tmp files if not exists
+  loop: "{{ netplan_config.connections | d({}) | dict2items }}"
+  ansible.builtin.copy:
+    content: "{{ item.value | to_nice_yaml(indent=2) }}"
+    dest: "/tmp/netplan/{{ item.key }}.yaml"
+  tags:
+    - connections
+
+- name: Merge tmp netplan files into dict
+  vars:
+    netplan_root_dir: /tmp/netplan/
+  ansible.builtin.import_tasks:
+    file: "{{ role_path }}/tasks/netplan_merge.yml"
+  tags:
+    - connections
+
+- name: Set merge dict fact
+  set_fact:
+    given_merged_config: "{{ netplan_merged_config }}"
+  tags:
+    - connections
+
+- name: Merge netplan files into dict
+  vars:
+    netplan_root_dir: /etc/netplan/
+  ansible.builtin.import_tasks:
+     file: "{{ role_path }}/tasks/netplan_merge.yml"
+  tags:
+    - connections
+
+- name: Set netplan connection facts
+  set_fact:
+    current_merged_config: "{{ netplan_merged_config }}"
+  tags:
+    - connections
+
+- when: given_merged_config != current_merged_config
+  block:
+    - name: Fail on network difference
+      when: fail_on_netplan_change
+      ansible.builtin.fail:
+        msg: |
+          Netplan is set to fail on any changes due to "fail_on_netplan_change" variable.  
+          The reason for this setting is that any changes to network settings causes outages for vms.
+          Check the README.md in "connections" role of the one_deploy collection for more details
+      tags:
+        - connections
+    
+    - when: apply_network_change
+      block:
+        - name: Overwrite existing netplan files
+          loop: "{{ netplan_config.connections | d({}) | dict2items }}"
+          ansible.builtin.copy:
+            content: "{{ item.value | to_nice_yaml(indent=2) }}"
+            dest: "/etc/netplan/{{ item.key }}.yaml"
+          tags:
+            - connections
+
+        - name: Netplan generate
+          when:
+            - netplan_config.update_type is defined
+            - netplan_config.update_type == 'generate'
+          changed_when: false
+          ansible.builtin.command: netplan generate
+          tags:
+            - connections
+
+        - name: Netplan apply
+          when:
+            - netplan_config.update_type is defined
+            - netplan_config.update_type == 'apply'
+          changed_when: false
+          ansible.builtin.command: netplan apply
+          tags:
+            - connections

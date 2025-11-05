@@ -1,0 +1,123 @@
+---
+- name: Check if networkmanager config file exists
+  ansible.builtin.stat:
+    path: "/etc/NetworkManager/system-connections/{{ conn.key }}.nmconnection"
+  register: file_stat
+  tags:
+    - connections
+
+- when: file_stat.stat.exists
+  block:
+    - name: Read existing file
+      ansible.builtin.slurp:
+        src: "/etc/NetworkManager/system-connections/{{ conn.key }}.nmconnection"
+      register: current_file
+      tags:
+        - connections
+    
+    - name: Convert ini to yaml to compare against settings
+      ansible.builtin.set_fact:
+        current_nm_yaml: "{{ current_file.content | b64decode | community.general.from_ini | from_yaml }}"
+      tags:
+        - connections
+
+    - name: Set facts for fail types
+      ansible.builtin.set_fact:
+        is_connection_fail: "{{ _is_connection_fail | trim | bool }}"
+      vars:
+        _is_connection_fail: |
+          {% if conn_type == 'bridges' and fail_on_nm_bridge_change %}
+          true
+          {% elif conn_type == 'bonds' and fail_on_nm_bond_change %}
+          true
+          {% elif conn_type == 'vlans' and fail_on_nm_vlan_change %}
+          true
+          {% elif conn_type == 'ethernets' and fail_on_nm_ethernet_change %}
+          true
+          {% else %}
+          false
+          {% endif %}
+      tags:
+        - connections
+
+    - when: conn_type == 'bridges'
+      block:
+        - name: Get list of running VMs
+          register: running_vms
+          changed_when: false
+          ansible.builtin.command: virsh list --name
+          tags:
+            - connections
+
+        - name: Filter out empty lines from VM list
+          ansible.builtin.set_fact:
+            vm_names: "{{ running_vms.stdout_lines | select('match', '^.+$') | list }}"
+          tags:
+            - connections
+
+        - name: Get nic info from vms
+          changed_when: false
+          loop: "{{ vm_names }}"
+          loop_control:
+            loop_var: vm_name
+          register: vm_interface_shell
+          ansible.builtin.shell: |
+            virsh domiflist {{ vm_name }} | tail -n +3 | awk '$2 == "bridge" { print $3 }'
+          tags:
+            - connections
+
+        - name: "Determine if any nics are connected to bridge {{ conn.key }}"
+          set_fact: 
+            is_vm_using_bridge: |
+              {{
+                conn.key in 
+                vm_interface_shell.results 
+                | map(attribute='stdout_lines') 
+                | list 
+                | flatten 
+                | unique 
+                | list
+              }}
+
+        - name: Update networkmanager connection fact
+          when:
+            - not is_vm_using_bridge
+            - bridge_change_override
+          ansible.builtin.set_fact:
+            is_connection_fail: false
+          tags:
+            - connections
+
+    - name: Compare contents
+      when: 
+        - networkmanager_config[conn_type][conn.key] != current_nm_yaml
+        - is_connection_fail
+      ansible.builtin.fail:
+        msg: |
+          Connection type "{{ conn_type }}" is set to fail on any changes.
+          The reason for this setting is that any changes to network settings causes outages for vms.
+          Check the README.md in "connections" role of the one_deploy collection for more details
+      tags:
+        - connections
+
+- when: apply_network_change
+  block:
+    - name: "Create/update {{ conn.key }}.nmconnection file"
+      ansible.builtin.copy:
+        content: "{{ networkmanager_config[conn_type][conn.key] | community.general.to_ini }}"
+        dest: "/etc/NetworkManager/system-connections/{{ conn.key }}.nmconnection"
+        owner: root
+        group: root
+        mode: '0600'
+      tags:
+        - connections
+
+    - name: "Reload and bring up connection {{ conn.key }}"
+      when:
+        - current_nm_yaml is not defined or 
+          networkmanager_config[conn_type][conn.key] != current_nm_yaml
+      ansible.builtin.shell: |
+        nmcli c reload
+        nmcli c up {{ networkmanager_config[conn_type][conn.key]['connection']['interface-name'] | d(conn.key) }}
+      tags:
+        - connections

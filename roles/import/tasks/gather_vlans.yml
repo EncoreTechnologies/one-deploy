@@ -1,0 +1,54 @@
+---
+- name: "Verify vlan {{ vlan_interface.key }} exists"
+  register: verify_vlan_shell
+  changed_when: false
+  ansible.builtin.shell: |
+    ip link show {{ vlan_interface.key }}
+  tags:
+    - import
+
+- when: verify_vlan_shell.rc == 0
+  block:
+    - name: "Grab vlan {{ vlan_interface.key }}"
+      register: vlan_shell
+      changed_when: false
+      ansible.builtin.shell: |
+        ip link show {{ vlan_interface.key }} | grep '@' | awk '{print $2}' | cut -d ":" -f 1
+      tags:
+        - import
+
+    - name: Set vlan facts
+      ansible.builtin.set_fact:
+        vlan_id: "{{ vlan_shell.stdout | split('.') | last | split('@') | first }}"
+        vlan_phydev: "{{ vlan_shell.stdout | split('@') | last }}"
+        vlan_name: "{{ vlan_shell.stdout | split('@') | first }}"
+        vlan_template_name: "{{ vlan_interface.value.template_name | d(vlan_shell.stdout | split('@') | first) }}"
+      tags:
+        - import
+
+    - name: "Get bridge for vlan interface {{ vlan_name }}"
+      changed_when: false
+      register: vlan_bridge_name_shell
+      ansible.builtin.shell: |
+        ip -d link show {{ vlan_name }} \
+        | grep 'master' \
+        | awk '{ for (i=1; i<=NF; i++) { if ($i == "master") { print $(i+1); break; } } }'
+      tags:
+        - import
+
+    - name: "Set vlan bridge fact"
+      ansible.builtin.set_fact:
+        bridge_to_vlan_mapping: |
+          {{ 
+            bridge_to_vlan_mapping | 
+            combine({vlan_bridge_name_shell.stdout: 
+              {
+                'vlan_id': vlan_id, 
+                'vlan_template_name': vlan_template_name,
+                'phydev': vlan_phydev,
+                'mac_ar_size': vlan_interface.value.mac_ar_size | default(vn_mac_ar_size)
+              }
+            }) 
+          }}
+      tags:
+        - import

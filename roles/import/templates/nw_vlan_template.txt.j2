@@ -1,0 +1,9 @@
+NAME = {{ vn_vlan_name }}
+VN_MAD = 802.1Q
+PHYDEV = {{ vn_phydev }}
+BRIDGE = {{ vn_bridge }}
+VLAN_ID = {{ vn_vlan_id }}
+AR=[
+    TYPE="ETHER",
+    SIZE="{{ vn_mac_ar_size }}"
+]

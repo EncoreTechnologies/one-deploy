@@ -1,0 +1,356 @@
+---
+- name: Set import_vm facts
+  ansible.builtin.set_fact:
+    vm_pinned_host_id: ''
+  tags:
+    - import
+
+- name: "Check if vm {{ import_vm.key }} has already been imported"
+  delegate_to: "{{ leader }}"
+  ansible.builtin.shell: |
+    onetemplate list --csv -l NAME | grep {{ import_vm.key }}
+  register: check_vm_template_shell
+  failed_when: false
+  tags:
+    - import
+
+- delegate_to: "{{ leader }}"
+  when: import_vm.value.pinned_host is defined
+  block:
+    - name: "Grab onehost id for host {{ import_vm.value.pinned_host }}"
+      ansible.builtin.command: "onehost show --json {{ import_vm.value.pinned_host }}"
+      changed_when: false
+      register: onehost_results
+      tags:
+        - import
+
+    - name: Set onehost id
+      ansible.builtin.set_fact:
+        vm_pinned_host_id: "{{ (onehost_results.stdout | from_json)['HOST']['ID'] }}"
+
+  rescue:
+    - name: Set onehost error fact
+      ansible.builtin.set_fact:
+        onehost_error: true
+      tags:
+        - import
+
+  always:
+    - name: "Failing after querying for host {{ import_vm.value.pinned_host }}"
+      ansible.builtin.fail:
+        msg: "Review above tasks for error that occured when trying to query for host"
+      when: onehost_error is defined
+      tags:
+        - import
+
+- when: check_vm_template_shell.rc != 0
+  block:
+    - block:
+      - name: "Check if vm {{ import_vm.key }} is defined"
+        ansible.builtin.command: "virsh dominfo {{ import_vm.key }}"
+        changed_when: false
+        failed_when: false
+        register: vm_exists_shell
+        tags:
+          - import
+
+      - name: Vm does not exist
+        when: vm_exists_shell.rc != 0
+        ansible.builtin.fail:
+          msg: |
+            VM "{{ import_vm.key }}" is not defined in virsh to import.  
+            Run a `virsh list --all` to view all vms defined on node
+        tags:
+          - import
+
+      - name: "Get disk info from vm {{ import_vm.key }}"
+        ansible.builtin.shell: |
+          virsh domblklist --details {{ import_vm.key }} | tail -n +3 | awk '$2 == "disk" { print $4 }'
+        changed_when: false
+        register: vm_disk_location_shell
+        tags:
+          - import
+
+      - name: Set vm facts
+        ansible.builtin.set_fact:
+          # onevnet_ids is used in vm_template.txt.j2
+          onevnet_ids: []
+          oneimage_disk_ids: []
+          vm_total_disk_bytes: 0
+          all_vm_disk_sizes: 
+            virtual: 0 
+            actual: 0
+          onetemplate_vm_path: "{{ vm_template_dir }}/{{ import_vm.key }}.txt"
+          oneimage_vm_disk_datastore_dir: "{{ ds_configs.image.path }}/{{ import_vm.key }}"
+          disk_log_dir: "{{ one_tmp_dir }}/logs/{{ import_vm.key }}"
+          xml_dump_file: "{{ vm_disk_location_shell.stdout_lines[0] | dirname }}/{{ import_vm.key }}.xml.bak"
+        tags:
+          - import
+
+      - name: "Dump xml from vm {{ import_vm.key }} on host {{ ansible_host }}"
+        when: vm_disk_location_shell.stdout_lines | length > 0
+        ansible.builtin.shell: |
+          virsh dumpxml {{ import_vm.key }} > {{ xml_dump_file }}
+        changed_when: false
+        register: vmxml
+        tags:
+          - import
+
+      - name: Update dump file permissions
+        ansible.builtin.command: |
+          chown oneadmin:oneadmin {{ xml_dump_file }}
+        changed_when: false
+        tags:
+          - import
+
+      - name: Parse xml for hypervisor type
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: /domain[@type]
+          content: attribute
+        register: hypervisorinfo
+
+      - name: Parse xml for memory
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: /domain/memory
+          content: text
+        register: meminfo
+
+      - name: Parse xml for cpu
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: /domain/vcpu
+          content: text
+        register: cpuinfo
+
+      - name: Parse xml for disks
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: "/domain/devices/disk[@device='disk']/source"
+          content: attribute
+        register: diskinfo
+
+      - name: Parse xml for networks
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: "/domain/devices/interface[@type='bridge']/source"
+          content: attribute
+        register: vnetinfo
+
+      - name: Gather network info
+        ansible.builtin.include_tasks: gather_network_info.yml
+        vars:
+          bridge: "{{ item.source.bridge }}"
+        when: vnetinfo.matches is defined
+        loop: "{{ vnetinfo.matches }}"
+        tags:
+          - import
+
+      - name: Debug vm stats
+        ansible.builtin.debug:
+          msg:
+            - "vm_cpu: {{ cpuinfo.matches[0].vcpu | d(vm_cpu) }}"
+            - "vm_mem: {{ (meminfo.matches[0].memory | d(vm_mem) | int) // 1024 }}"
+            - "vm_vnc_port: {{ free_port.stdout }}"
+        tags: 
+          - never
+          - debug
+
+      - name: Set vm stats
+        ansible.builtin.set_fact:
+          vm_cpu: "{{ cpuinfo.matches[0].vcpu | d(vm_cpu) }}"
+          vm_mem: "{{ (meminfo.matches[0].memory | d(vm_mem) | int) // 1024 }}"
+          vm_name: "{{ import_vm.key }}"
+          vm_hypervisor: "{{ hypervisorinfo.matches[0].domain.type }}"
+
+      - name: "Shutdown vm {{ import_vm.key }} on host {{ ansible_host }}"
+        ansible.builtin.command: "virsh destroy {{ import_vm.key }}"
+        changed_when: false
+        failed_when: false
+        tags:
+          - import
+
+      - name: "Looping through disk locations to add up disk size"
+        ansible.builtin.include_tasks: disk_size.yml
+        vars:
+          disk_location: "{{ item.source.file }}"
+        when: diskinfo.matches is defined
+        loop: "{{ diskinfo.matches }}"
+        tags:
+          - import
+
+      - delegate_to: "{{ leader }}"
+        block:
+          - name: "Find all files under {{ ds_configs.image.path }}"
+            ansible.builtin.find:
+              paths: "{{ ds_configs.image.path }}"
+              recurse: yes
+              file_type: file
+            register: all_files
+            tags:
+              - import
+
+          - name: Try qemu-img info on each file
+            ansible.builtin.command: |
+              qemu-img info --force-share --output=json {{ item.path }}
+            loop: "{{ all_files.files }}"
+            register: disk_info
+            changed_when: false
+            failed_when: false 
+            tags:
+              - import
+
+          - name: Extract disk sizes from valid images
+            ansible.builtin.set_fact:
+              all_vm_disk_sizes: |
+                {{
+                  all_vm_disk_sizes
+                  | combine({
+                      'virtual': (all_vm_disk_sizes.virtual | default(0)) + (item.stdout | from_json)['virtual-size'],
+                      'actual':  (all_vm_disk_sizes.actual  | default(0)) + (item.stdout | from_json)['actual-size']
+                    })
+                }}
+            loop: "{{ disk_info.results }}"
+            when: item.rc == 0 
+            tags:
+              - import
+
+          - name: Calculate size difference
+            ansible.builtin.set_fact:
+              disk_size_diff: "{{ all_vm_disk_sizes.virtual - all_vm_disk_sizes.actual }}"
+
+          - name: Debug disk size difference
+            ansible.builtin.debug:
+              msg:
+                - "All vm disks virtual space: {{ all_vm_disk_sizes.virtual }}"
+                - "All vm disks actual space: {{ all_vm_disk_sizes.actual }}"
+                - "Calculated disk size difference: {{ disk_size_diff }}"
+            tags:
+              - never
+              - debug
+  
+          - name: Get available space on filesystem
+            ansible.builtin.shell: df --output=avail -B1 {{ ds_configs.image.path }} | tail -1
+            register: df_img_available_space
+            changed_when: false
+            tags:
+              - import
+
+          - name: Extract available space (bytes)
+            ansible.builtin.set_fact:
+              available_space: "{{ (df_img_available_space.stdout | trim) }}"
+            tags:
+              - import
+
+          - name: Calculate remaining space after virtual usage
+            ansible.builtin.set_fact:
+              disk_dir_remaining_bytes: "{{ (available_space | int) - (disk_size_diff | int) }}"
+            tags:
+              - import
+
+      - name: Debug total disk space
+        ansible.builtin.debug:
+          msg:
+            - "total vm disk size: {{ vm_total_disk_bytes }} bytes"
+            - "total space available for mount point {{ ds_configs.image.path }}: {{ disk_dir_remaining_bytes }} bytes"
+        tags:
+          - never
+          - debug
+
+      - name: Fail on disk size
+        when: (vm_total_disk_bytes | int) >= (disk_dir_remaining_bytes | int)
+        ansible.builtin.fail:
+          msg: |
+            Not enough space to import vm disks to frontend dir {{ ds_configs.image.path }} from vm '{{ import_vm.key }}'.
+            Required {{ (vm_total_disk_bytes | int) | human_readable(unit='M') }},
+            Available {{ (disk_dir_remaining_bytes | int) | human_readable(unit='M') }}
+        tags:
+          - import
+
+      rescue:
+        - name: "Restart vm {{ import_vm.key }} on host {{ ansible_host }} after failing to get disk storage"
+          ansible.builtin.command: "virsh start {{ import_vm.key }}"
+          changed_when: false
+          tags:
+            - import
+
+        - name: Set disk error fact
+          ansible.builtin.set_fact:
+            disk_error: true  
+          tags:
+            - import
+
+      always:
+        - name: "Failing after disk operation failure"
+          when: disk_error is defined
+          ansible.builtin.fail:
+            msg: "Review above tasks for error that occured when trying to get disk size info"
+          tags:
+            - import
+
+    - when: ds.mode == "ssh"
+      block:
+        - delegate_to: "{{ leader }}"
+          block:
+            - name: "Create directory for vm's '{{ import_vm.key }}' disks"
+              ansible.builtin.file:
+                owner: oneadmin
+                group: oneadmin
+                path: "{{ oneimage_vm_disk_datastore_dir }}"
+                state: directory
+                mode: '0750'
+              tags:
+                - import
+
+            - name: "Add host {{ ansible_host }} to known hosts file"
+              ansible.builtin.known_hosts:
+                name: "{{ ansible_host }}"
+                key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
+              tags:
+                - import
+
+        - name: "Looping through disks for vm {{ import_vm.key }}"
+          ansible.builtin.include_tasks: disk.yml
+          loop: "{{ vm_disk_location_shell.stdout_lines }}"
+          loop_control:
+            loop_var: disk_location
+          tags:
+            - import
+
+    - delegate_to: "{{ leader }}"
+      block:
+        - name: "Generate txt template for vm {{ import_vm.key }}"
+          ansible.builtin.template:
+            owner: oneadmin
+            group: oneadmin
+            src: vm_template.txt.j2
+            dest: "{{ onetemplate_vm_path }}"
+          tags:
+            - import
+
+        - name: "Create template for vm {{ import_vm.key }}"
+          ansible.builtin.command: onetemplate create {{ onetemplate_vm_path }}
+          tags:
+            - import
+
+        - name: "Instantiate vm {{ import_vm.key }}"
+          ansible.builtin.command: onetemplate instantiate {{ import_vm.key }} --name {{ import_vm.key }}
+          when: |
+            import_vm.value.prevent_start_on_import is not defined or 
+            import_vm.value.prevent_start_on_import == false
+          tags:
+            - import
+
+    - name: "Backup disks from vm {{ import_vm.key }} on host {{ ansible_host }}"
+      when: vm_disk_location_shell.stdout_lines | length > 0
+      ansible.builtin.command: |
+        mv {{ vm_disk_location_shell.stdout_lines[0] | dirname }} {{ disk_backup_dir }}
+      tags:
+        - import
+
+- when: check_vm_template_shell.rc == 0
+  ansible.builtin.debug:
+    msg: "Vm {{ import_vm.key }} already imported"
+  tags:
+    - import

@@ -1,0 +1,7 @@
+---
+collections:
+  - opennebula.deploy
+
+dependencies:
+  - role: common
+  - role: helper/facts

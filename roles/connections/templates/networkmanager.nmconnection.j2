@@ -1,0 +1,16 @@
+{%- for section, properties in connection_params.items() %}
+{% if properties is mapping and properties | length > 0 %}
+[{{ section }}]
+{% if section == 'connection' %}
+id={{ connection_id }}
+type={{ connection_type }}
+{% endif %}
+{% for key, value in properties.items() %}
+{% if section == 'connection' and (key == 'id' or key == 'type') %}
+{# Do nothing #}
+{% else %}
+{{ key | replace('_', '-') }}={{ value }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}

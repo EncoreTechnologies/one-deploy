@@ -1,0 +1,109 @@
+---
+- name: Set import vm facts
+  vars:
+    _default_image:
+      type: image
+      path: /var/lib/one/datastores/0
+    _default_system:
+      type: system
+      path: /var/lib/one/datastores/1
+    _default_file:
+      type: file
+      path: /var/lib/one/datastores/2
+    _mounts:
+      image: |
+        {{ ds.config.mounts | d([_default_image]) | selectattr('type', '==', 'image') }}
+      system: |
+        {{ ds.config.mounts | d([_default_system]) | selectattr('type', '==', 'system') }}
+      file: |
+        {{ ds.config.mounts | d([_default_file]) | selectattr('type', '==', 'file') }}
+  ansible.builtin.set_fact:
+    bridge_to_vlan_mapping: {}
+    img_dir_total_bytes_available: 0
+    vm_template_dir: "{{ one_tmp_dir }}/vm_templates"
+    nw_template_dir: "{{ one_tmp_dir }}/nw_templates"
+    disk_backup_dir: "{{ _mounts.system[0].path }}/disk-backups"
+    ds_configs:
+      image: "{{ _mounts.image[0] }}"
+      system: "{{ _mounts.system[0] }}"
+      file: "{{ _mounts.file[0] }}"
+  tags:
+    - import
+
+- name: "Create disk backup dir on host {{ ansible_host }}"
+  ansible.builtin.file:
+    owner: oneadmin
+    group: oneadmin
+    path: "{{ disk_backup_dir }}"
+    state: directory
+    mode: '0775'
+  tags:
+    - import
+
+- delegate_to: "{{ leader }}"
+  block:
+    - name: Ensure vm template dir created
+      ansible.builtin.file:
+        owner: oneadmin
+        group: oneadmin
+        path: "{{ vm_template_dir }}"
+        state: directory
+        mode: '0755'
+      tags:
+        - import
+
+    - name: Ensure nw template dir created
+      ansible.builtin.file:
+        owner: oneadmin
+        group: oneadmin
+        path: "{{ nw_template_dir }}"
+        state: directory
+        mode: '0755'
+      tags:
+        - import
+
+- name: Import networks
+  when: import_type == 'networks'
+  block:
+    - ansible.builtin.include_tasks: gather_vlans.yml
+      loop: "{{ vlans_to_import | d({}) | dict2items }}"
+      loop_control:
+        loop_var: vlan_interface
+      tags:
+        - import
+        - gather_vlans
+
+    - ansible.builtin.include_tasks: create_vlan_networks.yml
+      loop: "{{ bridge_to_vlan_mapping | dict2items }}"
+      loop_control:
+        loop_var: network
+      tags:
+        - import
+        - create_vlan_networks
+
+    - name: "Get native vlan interfaces for host {{ ansible_host }}"
+      ansible.builtin.shell: |
+        ip link show type bridge | awk '{print $2}' | cut -d ":" -f 1
+      register: native_vlan_interfaces_shell
+      changed_when: false
+      tags:
+        - import
+
+    - ansible.builtin.include_tasks: create_native_vlan_networks.yml
+      loop: "{{ native_vlans_to_import | dict2items }}"
+      loop_control:
+        loop_var: native_vlan
+      when: native_vlan.key in native_vlan_interfaces_shell.stdout_lines
+      tags:
+        - import
+        - create_native_vlan_networks
+
+- name: "Loop vms to import"
+  ansible.builtin.include_tasks: import_vm.yml
+  loop: "{{ vms_to_import | d({}) | dict2items }}"
+  when: import_type == 'vms'
+  loop_control:
+    loop_var: import_vm
+  tags:
+    - import
+    - import_vms

@@ -1,0 +1,146 @@
+---
+- name: "Get disk target from disk {{ disk_location }} on vm {{ vm_name }}"
+  delegate_to: "{{ ansible_host }}"
+  changed_when: false
+  register: remote_disk_target_shell
+  ansible.builtin.shell: |
+    virsh domblklist --details {{ vm_name }} | grep {{ disk_location }} | awk '{ print $3 }'
+  tags:
+    - import
+
+- name: Set disk location facts
+  vars:
+    _dn: "{{ disk_location | basename }}"
+    _disk_log_dir: "{{ one_tmp_dir }}/logs/{{ vm_name }}"
+  ansible.builtin.set_fact:
+    disk_name: "{{ _dn }}"
+    oneimage_name: "{{ vm_name }}-{{ _dn }}"
+    disk_log_file: "{{ _disk_log_dir }}/{{ _dn }}.log"
+    disk_log_dir: "{{ _disk_log_dir }}"
+    oneimage_local_disk_location: "{{ oneimage_vm_disk_datastore_dir }}/{{ _dn }}"
+    image_type: "{% if 'a' in remote_disk_target_shell.stdout %}OS{% else %}DATABLOCK{% endif %}"
+  tags:
+    - import
+
+- name: Begin disk operations
+  delegate_to: "{{ leader }}"
+  block:
+    - name: "Create disk log dir for disk '{{ disk_name }}' for vm '{{ vm_name }}'"
+      ansible.builtin.file:
+        owner: oneadmin
+        group: oneadmin
+        path: "{{ disk_log_dir }}"
+        state: directory
+        mode: '0750'
+      tags:
+        - import
+
+    - name: "Create disk log file for disk '{{ disk_name }}' for vm '{{ vm_name }}'"
+      ansible.builtin.file:
+        owner: oneadmin
+        group: oneadmin
+        path: "{{ disk_log_file }}"
+        state: touch
+        mode: '0644'
+      tags:
+        - import
+
+    - name: |
+        Copying disk '{{ disk_name }}' from vm '{{ vm_name }}' to 
+        frontend (run `tail -f /var/tmp/one/logs/{{ vm_name }}/{{ disk_name }}.log` for progress)
+      become: yes
+      become_user: oneadmin
+      changed_when: false
+      ansible.builtin.shell: |
+        rsync \
+        -avz \
+        --partial \
+        --progress \
+        oneadmin@{{ ansible_host }}:{{ disk_location }} \
+        {{ oneimage_vm_disk_datastore_dir }} 2>&1 | tee {{ disk_log_file }}
+      tags:
+        - import
+
+    - name: "Check if image {{ oneimage_name }} is already imported"
+      changed_when: false
+      failed_when: false
+      register: oneimage_show_shell
+      ansible.builtin.shell: |
+        oneimage show {{ oneimage_name }} | grep 'ID' | awk '{print $3}'
+      tags:
+        - import
+
+    - when: oneimage_show_shell.stderr != ''
+      block:
+        # Check for MB disk sizes 
+        - name: "Get info for disk {{ disk_name }} on vm {{ vm_name }}"
+          register: disk_shell
+          ansible.builtin.shell: |
+            qemu-img info --force-share --output=json {{ oneimage_local_disk_location }}
+          tags:
+            - import
+
+        - name: "Convert {{ disk_name }} disk's size to MB on vm {{ vm_name }}"
+          register: disk_size_shell
+          ansible.builtin.shell: |
+            echo '{{ disk_shell.stdout }}' | jq '.["virtual-size"] / 1024 / 1024'
+          tags:
+            - import
+
+        - name: "Get format for disk {{ disk_name }} on vm {{ vm_name }}"
+          register: disk_type_shell
+          ansible.builtin.shell: |
+            echo '{{ disk_shell.stdout }}' | jq '.["format"]'
+          tags:
+            - import
+
+        - name: "Create disk image {{ disk_name }} from vm {{ vm_name }}"
+          register: oneimage_create_shell
+          ansible.builtin.shell: |
+            oneimage create \
+            --name {{ oneimage_name }} \
+            --source {{ oneimage_local_disk_location }} \
+            --format {{ disk_type_shell.stdout }} \
+            --type {{ image_type }} \
+            --persistent \
+            --size {{ disk_size_shell.stdout }} \
+            --datastore {{ oneimage_datastore_name }}
+          tags:
+            - import
+
+        - name: "Add new oneimage id to list on vm {{ vm_name }}"
+          ansible.builtin.set_fact:
+            oneimage_disk_ids: "{{ oneimage_disk_ids + [oneimage_create_shell.stdout | split(':') | last | trim] }}"
+          tags:
+            - import
+
+    - name: "Add existing oneimage id to list on vm {{ vm_name }}"
+      when: oneimage_show_shell.stderr == ''
+      ansible.builtin.set_fact:
+        oneimage_disk_ids: "{{ oneimage_disk_ids + [oneimage_show_shell.stdout | split(':') | last | trim] }}"
+      tags:
+        - import
+
+  rescue:
+    - name: "Restart vm {{ vm_name }} on host {{ ansible_host }} after disk failure"
+      delegate_to: "{{ ansible_host }}"
+      changed_when: false
+      failed_when: false
+      ansible.builtin.shell: |
+        virsh start {{ vm_name }}
+      tags:
+        - import
+
+    - name: Set disk error fact
+      ansible.builtin.set_fact:
+        disk_error: true
+      tags:
+        - import
+
+  always:
+    - name: "Failing after disk operation failure"
+      when: disk_error is defined
+      ansible.builtin.fail:
+        msg: "Review above tasks for error that occured when trying to copy disk"
+      tags:
+        - import

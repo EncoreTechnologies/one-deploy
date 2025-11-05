@@ -1,0 +1,41 @@
+---
+- name: Set connections facts
+  vars:
+    _default_network_type: "{% if ansible_os_family == 'Debian' %}netplan{% else %}networkmanager{% endif %}"
+    _network_type: "{{ network_type | d(_default_network_type) }}"
+  set_fact:
+    local_network_type: "{{ _network_type }}"
+  tags:
+    - connections
+
+- name: Import netplan connections
+  when:
+    - local_network_type == 'netplan'
+    - netplan_config.connections is defined
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/netplan.yml"
+  tags:
+    - connections
+
+- name: Import networkmanager connections
+  when:
+    - local_network_type == 'networkmanager'
+    - networkmanager_config.bridges is defined or
+      networkmanager_config.bonds is defined or
+      networkmanager_config.vlans is defined or
+      networkmanager_config.ethernets is defined
+  ansible.builtin.include_tasks:
+    file: "{{ role_path }}/tasks/networkmanager.yml"
+  tags:
+    - connections
+
+- name: Wait for DNS to resolve
+  ansible.builtin.command: "getent hosts {{ dns_test_host }}"
+  changed_when: false
+  register: dns_check
+  retries: "{{ dns_test_retries }}"
+  delay: "{{ dns_test_delay }}"
+  until: dns_check.rc == 0
+  ignore_errors: true
+  tags:
+    - connections

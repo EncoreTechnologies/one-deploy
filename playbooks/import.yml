@@ -1,0 +1,9 @@
+---
+- hosts: "{{ node_group | d('node') }}"
+  serial: 1
+  collections:
+    - opennebula.deploy
+  roles:
+    - role: opennebula/leader
+      when: leader is not defined
+    - role: import

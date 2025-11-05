@@ -1,0 +1,16 @@
+---
+- block:
+    - name: "List network for bridge {{ bridge }}"
+      ansible.builtin.shell: |
+        onevnet list | awk '$6 == "{{ bridge }}" {print $1}'
+      delegate_to: "{{ leader }}"
+      changed_when: false
+      register: bridge_shell
+      tags:
+        - import
+
+    - name: Append to network list
+      ansible.builtin.set_fact:
+        onevnet_ids: "{{ onevnet_ids + [bridge_shell.stdout | trim] }}"
+      tags:
+        - import

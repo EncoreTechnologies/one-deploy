@@ -71,6 +71,7 @@
       when: *evpn
 
     - role: network/node
+      # when: not skip_network_node_role
       tags: [network]
 
     - role: prometheus/exporter
