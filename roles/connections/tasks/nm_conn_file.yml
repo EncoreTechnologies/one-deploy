@@ -1,12 +1,16 @@
 ---
+- name: Set network manager config facts
+  ansible.builtin.set_fact:
+    current_nm_config: "{{ networkmanager_config[conn_type][conn.key]  }}"
+
 - name: Check if networkmanager config file exists
   ansible.builtin.stat:
     path: "/etc/NetworkManager/system-connections/{{ conn.key }}.nmconnection"
-  register: file_stat
+  register: nm_file_stat
   tags:
     - connections
 
-- when: file_stat.stat.exists
+- when: nm_file_stat.stat.exists
   block:
     - name: Read existing file
       ansible.builtin.slurp:
@@ -17,9 +21,13 @@
     
     - name: Convert ini to yaml to compare against settings
       ansible.builtin.set_fact:
-        current_nm_yaml: "{{ current_file.content | b64decode | community.general.from_ini | from_yaml }}"
+        current_nm_file_contents: "{{ current_file.content | b64decode | community.general.from_ini | from_yaml }}"
       tags:
         - connections
+
+    - name: Compare file settings to current config
+      set_fact:
+        update_nm_conn: "{{ (current_nm_config | to_nice_json != current_nm_file_contents | to_nice_json) | bool }}"
 
     - name: Set facts for fail types
       ansible.builtin.set_fact:
@@ -79,7 +87,7 @@
                 | list
               }}
 
-        - name: Update networkmanager connection fact
+        - name: Update connection fail fact
           when:
             - not is_vm_using_bridge
             - bridge_change_override
@@ -88,23 +96,30 @@
           tags:
             - connections
 
-    - name: Compare contents
-      when: 
-        - networkmanager_config[conn_type][conn.key] != current_nm_yaml
-        - is_connection_fail
+    - name: Compare network contents
       ansible.builtin.fail:
         msg: |
           Connection type "{{ conn_type }}" is set to fail on any changes.
           The reason for this setting is that any changes to network settings causes outages for vms.
           Check the README.md in "connections" role of the one_deploy collection for more details
+      when: 
+        - update_nm_conn
+        - is_connection_fail
       tags:
         - connections
 
-- when: apply_network_change
+- name: Update networkmanager connection fact
+  set_fact:
+    update_nm_conn: true
+  when: current_nm_file_contents is not defined or current_nm_file_contents == ''
+
+- when: 
+    - apply_network_change
+    - update_nm_conn
   block:
     - name: "Create/update {{ conn.key }}.nmconnection file"
       ansible.builtin.copy:
-        content: "{{ networkmanager_config[conn_type][conn.key] | community.general.to_ini }}"
+        content: "{{ current_nm_config | community.general.to_ini }}"
         dest: "/etc/NetworkManager/system-connections/{{ conn.key }}.nmconnection"
         owner: root
         group: root
@@ -113,11 +128,12 @@
         - connections
 
     - name: "Reload and bring up connection {{ conn.key }}"
-      when:
-        - current_nm_yaml is not defined or 
-          networkmanager_config[conn_type][conn.key] != current_nm_yaml
       ansible.builtin.shell: |
         nmcli c reload
-        nmcli c up {{ networkmanager_config[conn_type][conn.key]['connection']['interface-name'] | d(conn.key) }}
+        nmcli c up {{ conn.key }}
       tags:
         - connections
+
+- name: Unset network manager variables
+  set_fact:
+    current_nm_file_contents: ''
