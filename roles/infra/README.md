@@ -29,17 +29,14 @@ Role Variables
 | `infra_hostname`         | `str`  |                    | `n1a1`              | Defines on which HV machine the Front-end VM should be deployed.  |
 | `target_dev`             | `str`  |                    | `onecloud-01`       | Name of nic for frontend vm                                       |
 | `frontend_vm_name`       | `str`  |                    | `onecloud-01`       | Override for frontend vm seen in virsh                            |
-| `context.ETH0_DNS`       | `str`  |                    | `1.1.1.1`           | DNS server.                                                       |
-| `context.ETH0_GATEWAY`   | `str`  |                    | `10.2.50.1`         | Gateway.                                                          |
-| `context.ETH0_IP`        | `str`  |                    | `10.2.50.100`       | IPv4 address to be set on eth0.                                   |
-| `context.ETH0_MAC`       | `str`  |                    | `02:01:0a:02:32:64` | MAC address to be set on eth0 (**MUST** match MAC set in XML.)    |
-| `context.ETH0_MASK`      | `str`  |                    | `255.255.255.0`     | Network mask.                                                     |
-| `context.ETH0_NETWORK`   | `str`  |                    | `10.2.50.0`         | Network address.                                                  |
+| `context_networks`       | `list` |                    | (check below)       | List of network contexts where each one represents a different nic|
 | `context.GROW_FS`        | `str`  | `/`                |                     | Filesystems to grow.                                              |
 | `context.GROW_ROOTFS`    | `bool` | yes                |                     | Determines whether to grow root filesystem automatically          |
 | `context.PASSWORD`       | `str`  | `opennebula`       |                     | Root's password.                                                  |
 | `context.SET_HOSTNAME`   | `str`  | name of the FE VM  |                     | Hostname.                                                         |
 | `context.SSH_PUBLIC_KEY` | `str`  |                    | (check below)       | Root's extra authorized keys.                                     |
+
+
 
 **NOTE**: The `infra_hostname` and `context` dictionary should be set for members of the `frontend` group (please check the `inventory/infra.yml` example).
 
@@ -48,6 +45,20 @@ Dependencies
 
 - `community.libvirt`
 - `ansible.posix`
+
+Reference
+---------
+
+`context_networks` is a list of dics that determine the numbers of nics attached to the frontend vm and the network settings for each nic.
+
+`context_networks`
+  - `dns` (Optional) - Space seperated string of dns servers
+  - `gateway` (Optional) - The default gateway for host (ie 10.0.68.1)
+  - `ip` (Required) - IP of nic
+  - `mac` (Optional) - Mac address of nic
+  - `mask` (Required) - Mask of network (ie 255.255.255.0)
+  - `network` (Required) - Network for nic (ie 10.0.68.0)
+
 
 Example Playbook
 ----------------

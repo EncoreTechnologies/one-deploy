@@ -1,20 +1,20 @@
 ---
 - name: Set import vm facts
   vars:
-    _default_image:
-      type: image
-      path: /var/lib/one/datastores/0
     _default_system:
       type: system
+      path: /var/lib/one/datastores/0
+    _default_image:
+      type: image
       path: /var/lib/one/datastores/1
     _default_file:
       type: file
       path: /var/lib/one/datastores/2
     _mounts:
-      image: |
-        {{ ds.config.mounts | d([_default_image]) | selectattr('type', '==', 'image') }}
       system: |
         {{ ds.config.mounts | d([_default_system]) | selectattr('type', '==', 'system') }}
+      image: |
+        {{ ds.config.mounts | d([_default_image]) | selectattr('type', '==', 'image') }}
       file: |
         {{ ds.config.mounts | d([_default_file]) | selectattr('type', '==', 'file') }}
   ansible.builtin.set_fact:
