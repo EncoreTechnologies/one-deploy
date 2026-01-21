@@ -30,6 +30,14 @@
   tags:
     - import
 
+- name: Install required OS packages for import role
+  ansible.builtin.package:
+    name: python3-lxml
+  register: package
+  until: package is success
+  retries: 12
+  delay: 5
+
 - name: "Create disk backup dir on host {{ ansible_host }}"
   ansible.builtin.file:
     owner: oneadmin

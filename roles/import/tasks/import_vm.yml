@@ -81,7 +81,6 @@
             virtual: 0 
             actual: 0
           onetemplate_vm_path: "{{ vm_template_dir }}/{{ import_vm.key }}.txt"
-          oneimage_vm_disk_datastore_dir: "{{ ds_configs.image.path }}/{{ import_vm.key }}"
           disk_log_dir: "{{ one_tmp_dir }}/logs/{{ import_vm.key }}"
           xml_dump_file: "{{ vm_disk_location_shell.stdout_lines[0] | dirname }}/{{ import_vm.key }}.xml.bak"
         tags:
@@ -289,34 +288,22 @@
           tags:
             - import
 
-    - when: ds.mode == "ssh"
-      block:
-        - delegate_to: "{{ leader }}"
-          block:
-            - name: "Create directory for vm's '{{ import_vm.key }}' disks"
-              ansible.builtin.file:
-                owner: oneadmin
-                group: oneadmin
-                path: "{{ oneimage_vm_disk_datastore_dir }}"
-                state: directory
-                mode: '0750'
-              tags:
-                - import
+    - name: "Add host {{ ansible_host }} to known hosts file"
+      ansible.builtin.known_hosts:
+        name: "{{ ansible_host }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
+      when: ds.mode == "ssh"
+      delegate_to: "{{ leader }}"
+      tags:
+        - import
 
-            - name: "Add host {{ ansible_host }} to known hosts file"
-              ansible.builtin.known_hosts:
-                name: "{{ ansible_host }}"
-                key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
-              tags:
-                - import
-
-        - name: "Looping through disks for vm {{ import_vm.key }}"
-          ansible.builtin.include_tasks: disk.yml
-          loop: "{{ vm_disk_location_shell.stdout_lines }}"
-          loop_control:
-            loop_var: disk_location
-          tags:
-            - import
+    - name: "Looping through disks for vm {{ import_vm.key }}"
+      ansible.builtin.include_tasks: disk.yml
+      loop: "{{ vm_disk_location_shell.stdout_lines }}"
+      loop_control:
+        loop_var: disk_location
+      tags:
+        - import
 
     - delegate_to: "{{ leader }}"
       block:
@@ -343,7 +330,9 @@
             - import
 
     - name: "Backup disks from vm {{ import_vm.key }} on host {{ ansible_host }}"
-      when: vm_disk_location_shell.stdout_lines | length > 0
+      when: 
+        - vm_disk_location_shell.stdout_lines | length > 0
+        - not skip_disk_backup
       ansible.builtin.command: |
         mv {{ vm_disk_location_shell.stdout_lines[0] | dirname }} {{ disk_backup_dir }}
       tags:
