@@ -1,27 +1,4 @@
 ---
-- vars:
-    _dirs: >-
-      {{ [runtime_dir] + ((passthrough_fs | map(attribute='source_dir')) if (passthrough_fs is truthy) else []) }}
-  block:
-    - name: Create dirs
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: 0
-        group: kvm
-        mode: ug=rwx,o=
-      loop: "{{ _dirs }}"
-
-    - name: Set ACLs to workaround oneadmin's access
-      ansible.posix.acl:
-        path: "{{ item.0 }}"
-        state: present
-        etype: group
-        entity: 9869
-        permissions: rwX
-        default: "{{ item.1 }}"
-      loop: "{{ _dirs | product([true, false]) }}"
-
 - name: Check if frontend already exists
   ansible.builtin.shell: "virsh list --all | grep {{ frontend_vm_name | d('frontend') }}"
   changed_when: false
@@ -31,35 +8,43 @@
 - when: frontend_results.rc == 1
   block:
     - block:
-        - name: Create temporary dirs
-          ansible.builtin.tempfile:
-            prefix: "one-deploy.{{ frontend }}."
-            state: directory
-          loop_control: { loop_var: frontend }
-          loop: "{{ infra_to_frontends[inventory_hostname] }}"
-          register: tempfile
+      - name: Create frontend directory permissions to oneadmin
+        ansible.builtin.file:
+          path: "{{ runtime_dir }}"
+          state: directory
+          owner: 9869
+          group: 9869
+          mode: 0755
 
-        - name: Create context.sh files
-          ansible.builtin.template:
-            dest: "{{ tempfile.results[item].path }}/context.sh"
-            src: context.sh.j2
-            mode: ug=rw,o=
-          vars:
-            frontend: "{{ tempfile.results[item].frontend }}"
-            context: "{{ hostvars[tempfile.results[item].frontend].context }}"
-          loop: "{{ range(tempfile.results | count) }}"
-          register: template_context_sh
+      - name: Create temporary dirs
+        ansible.builtin.tempfile:
+          prefix: "one-deploy.{{ frontend }}."
+          state: directory
+        loop_control: { loop_var: frontend }
+        loop: "{{ infra_to_frontends[inventory_hostname] }}"
+        register: tempfile
 
-        - name: Create context ISO images
-          ansible.builtin.command:
-            cmd: genisoimage --input-charset utf-8 -Jr -V CONTEXT
-                -o '{{ runtime_dir }}/{{ frontend_vm_name | d(frontend) }}.iso'
-                '{{ tempfile.results[item].path }}/context.sh'
-          changed_when: true
-          vars:
-            frontend: "{{ tempfile.results[item].frontend }}"
-          loop: "{{ range(tempfile.results | count) }}"
-          when: template_context_sh is changed
+      - name: Create context.sh files
+        ansible.builtin.template:
+          dest: "{{ tempfile.results[item].path }}/context.sh"
+          src: context.sh.j2
+          mode: ug=rw,o=
+        vars:
+          frontend: "{{ tempfile.results[item].frontend }}"
+          context: "{{ hostvars[tempfile.results[item].frontend].context }}"
+        loop: "{{ range(tempfile.results | count) }}"
+        register: template_context_sh
+
+      - name: Create context ISO images
+        ansible.builtin.command:
+          cmd: genisoimage --input-charset utf-8 -Jr -V CONTEXT
+              -o '{{ runtime_dir }}/{{ frontend_vm_name | d(frontend) }}.iso'
+              '{{ tempfile.results[item].path }}/context.sh'
+        changed_when: true
+        vars:
+          frontend: "{{ tempfile.results[item].frontend }}"
+        loop: "{{ range(tempfile.results | count) }}"
+        when: template_context_sh is changed
 
       always:
         - name: Delete temporary dirs
@@ -115,6 +100,15 @@
         context: "{{ hostvars[frontend].context }}"
       loop_control: { loop_var: frontend }
       loop: "{{ infra_to_frontends[inventory_hostname] }}"
+  
+    - name: Update frontend directory contents to oneadmin permissions
+      ansible.builtin.file:
+        path: "{{ runtime_dir }}"
+        state: directory
+        owner: 9869
+        group: 9869
+        mode: 0755
+        recurse: yes
 
 - name: Start Front-end VMs
   community.libvirt.virt:

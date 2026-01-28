@@ -25,7 +25,7 @@ Role Variables
 | `native_vlans_to_import`  | `dict`  | `{}`                        | The native vlans on node to import. This should be placed per node in     |
 |                           |         |                             | inventory file                                                            |
 | `vn_mac_ar_size`          | `int`   | `254`                       | The size of the mac address space for a network                           |
-
+| `skip_disk_backup`        | `bool`  | `null`                      | Determine whether to backup disk                                          |
 
 Notes
 -----

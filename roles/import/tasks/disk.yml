@@ -12,12 +12,13 @@
   vars:
     _dn: "{{ disk_location | basename }}"
     _disk_log_dir: "{{ one_tmp_dir }}/logs/{{ vm_name }}"
+    _oneimage_name:  "{{ vm_name }}-{{ _dn }}"
   ansible.builtin.set_fact:
     disk_name: "{{ _dn }}"
-    oneimage_name: "{{ vm_name }}-{{ _dn }}"
+    oneimage_name: "{{ _oneimage_name }}"
     disk_log_file: "{{ _disk_log_dir }}/{{ _dn }}.log"
     disk_log_dir: "{{ _disk_log_dir }}"
-    oneimage_local_disk_location: "{{ oneimage_vm_disk_datastore_dir }}/{{ _dn }}"
+    oneimage_local_disk_location: "{{ ds_configs.image.path }}/{{ _oneimage_name }}"
     image_type: "{% if 'a' in remote_disk_target_shell.stdout %}OS{% else %}DATABLOCK{% endif %}"
   tags:
     - import
@@ -57,7 +58,7 @@
         --partial \
         --progress \
         oneadmin@{{ ansible_host }}:{{ disk_location }} \
-        {{ oneimage_vm_disk_datastore_dir }} 2>&1 | tee {{ disk_log_file }}
+        {{ oneimage_local_disk_location }} 2>&1 | tee {{ disk_log_file }}
       tags:
         - import
 
