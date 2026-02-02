@@ -27,7 +27,6 @@ Role Variables
 | `passthrough_fs`         | `list` | `[]`               | (check below)       | Shared HV filesystems to attach to the Front-end VMs.             |
 | `disk_bus_type`          | `str`  | `scsi`             |                     | Disk bus type for primary disk on fe                              |
 | `infra_hostname`         | `str`  |                    | `n1a1`              | Defines on which HV machine the Front-end VM should be deployed.  |
-| `target_dev`             | `str`  |                    | `onecloud-01`       | Name of nic for frontend vm                                       |
 | `frontend_vm_name`       | `str`  |                    | `onecloud-01`       | Override for frontend vm seen in virsh                            |
 | `context_networks`       | `list` |                    | (check below)       | List of network contexts where each one represents a different nic|
 | `context.GROW_FS`        | `str`  | `/`                |                     | Filesystems to grow.                                              |

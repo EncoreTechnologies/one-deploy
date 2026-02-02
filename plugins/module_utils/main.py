@@ -106,3 +106,36 @@ def get_datablocks(params, one=None):
         if image.TYPE == 2
         if image.NAME.startswith("{name:s}-".format(**params))
     )
+
+
+def recursive_stringify(obj):
+    """
+    Takes object and recursivley stringifies all values within dict
+    This is mainly used when comparing running network config to updated config
+    """
+    if isinstance(obj, dict):
+        return {k: recursive_stringify(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [recursive_stringify(i) for i in obj]
+    else:
+        return str(obj).lower() if isinstance(obj, bool) else str(obj)
+
+
+def diff_shared_keys(d1, d2):
+    """
+    Recursively compare two dicts, but only for keys that both dicts share at each level.
+    Returns True if any diff is found between shared keys, else False
+    """
+    if not isinstance(d1, dict) or not isinstance(d2, dict):
+        return d1 != d2
+    shared_keys = set(d1.keys()) & set(d2.keys())
+    for key in shared_keys:
+        v1 = d1[key]
+        v2 = d2[key]
+        if isinstance(v1, dict) and isinstance(v2, dict):
+            if diff_shared_keys(v1, v2):
+                return True
+        else:
+            if v1 != v2:
+                return True
+    return False

@@ -1,4 +1,42 @@
 ---
+- name: Get list of running VMs
+  register: running_vms
+  changed_when: false
+  ansible.builtin.command: virsh list --name
+  tags:
+    - connections
+
+- name: Filter out empty lines from VM list
+  ansible.builtin.set_fact:
+    vm_names: "{{ running_vms.stdout_lines | select('match', '^.+$') | list }}"
+    vm_bridge_list: []
+  tags:
+    - connections
+
+- name: Get nic info from all vms in one shell
+  ansible.builtin.shell: |
+    for vm in {{ vm_names | join(' ') }}; do
+      virsh domiflist "$vm" | tail -n +3 | awk '$2 == "bridge" { print $3 }'
+    done
+  register: vm_interface_shell
+  changed_when: false
+  tags:
+    - connections
+
+- name: Set networkmanager connection facts
+  ansible.builtin.set_fact:
+    bond_list: "{{ networkmanager_config.bonds | d({}) | dict2items }}"
+    bridge_list: "{{ networkmanager_config.bridges | d({}) | dict2items }}"
+    vlan_list: "{{ networkmanager_config.vlans | d({}) | dict2items }}"
+    vlan_list: "{{ networkmanager_config.vlans | d({}) | dict2items }}"
+    vm_bridge_list:  |
+      {{
+        vm_interface_shell.stdout_lines
+        | d([])
+        | unique 
+        | list
+      }}
+
 - name: Loop through bond connections
   loop: "{{ networkmanager_config.bonds | d({}) | dict2items }}"
   vars:

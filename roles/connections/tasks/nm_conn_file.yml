@@ -1,7 +1,9 @@
 ---
 - name: Set network manager config facts
   ansible.builtin.set_fact:
-    current_nm_config: "{{ networkmanager_config[conn_type][conn.key]  }}"
+    current_nm_config: "{{ networkmanager_config[conn_type][conn.key] | opennebula.deploy.recursive_stringify }}"
+  tags:
+    - connections
 
 - name: Check if networkmanager config file exists
   ansible.builtin.stat:
@@ -27,7 +29,9 @@
 
     - name: Compare file settings to current config
       set_fact:
-        update_nm_conn: "{{ (current_nm_config | to_nice_json != current_nm_file_contents | to_nice_json) | bool }}"
+        update_nm_conn: "{{ current_nm_file_contents | opennebula.deploy.diff_shared_keys(current_nm_config)  }}"
+      tags:
+        - connections
 
     - name: Set facts for fail types
       ansible.builtin.set_fact:
@@ -50,42 +54,11 @@
 
     - when: conn_type == 'bridges'
       block:
-        - name: Get list of running VMs
-          register: running_vms
-          changed_when: false
-          ansible.builtin.command: virsh list --name
-          tags:
-            - connections
-
-        - name: Filter out empty lines from VM list
-          ansible.builtin.set_fact:
-            vm_names: "{{ running_vms.stdout_lines | select('match', '^.+$') | list }}"
-          tags:
-            - connections
-
-        - name: Get nic info from vms
-          changed_when: false
-          loop: "{{ vm_names }}"
-          loop_control:
-            loop_var: vm_name
-          register: vm_interface_shell
-          ansible.builtin.shell: |
-            virsh domiflist {{ vm_name }} | tail -n +3 | awk '$2 == "bridge" { print $3 }'
-          tags:
-            - connections
-
         - name: "Determine if any nics are connected to bridge {{ conn.key }}"
           set_fact: 
-            is_vm_using_bridge: |
-              {{
-                conn.key in 
-                vm_interface_shell.results 
-                | map(attribute='stdout_lines') 
-                | list 
-                | flatten 
-                | unique 
-                | list
-              }}
+            is_vm_using_bridge: "{{ conn.key in vm_bridge_list }}"
+          tags:
+            - connections
 
         - name: Update connection fail fact
           when:
@@ -112,6 +85,8 @@
   set_fact:
     update_nm_conn: true
   when: current_nm_file_contents is not defined or current_nm_file_contents == ''
+  tags:
+    - connections
 
 - when: 
     - apply_network_change
@@ -133,7 +108,13 @@
         nmcli c up {{ conn.key }}
       tags:
         - connections
+      # On Redhat, this will cut you head off if we do a reload after every connection
+      # so we delay but ubuntu you have to reload after every connection
+      # The connection on Redhat are activated all at once by the network manager handler
+      when: ansible_os_family == 'Debian'
 
 - name: Unset network manager variables
   set_fact:
     current_nm_file_contents: ''
+  tags:
+    - connections

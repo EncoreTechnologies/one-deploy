@@ -1,0 +1,42 @@
+---
+- name: Create temp file for datastore template
+  ansible.builtin.tempfile:
+    state: file
+    suffix: ds_template
+  register: ds_template_tmp
+
+- name: Write inventory_ds template to temp file
+  ansible.builtin.copy:
+    content: "{{ _template | opennebula.deploy.to_one }}"
+    dest: "{{ ds_template_tmp.path }}"
+  vars:
+    _template: "{{ inventory_ds.value.template | combine({'NAME': inventory_ds.key}) }}"
+
+- name: "Check datastore name {{ inventory_ds.key }} not in use"
+  when: (inventory_ds.value.id | int) not in existing_ds_dict
+  block:
+    - name: Show datastore name if exists
+      ansible.builtin.shell: "onedatastore show {{ inventory_ds.key }} --json"
+      register: ds_show_results
+      changed_when: false
+      failed_when: ds_show_results.rc != 0 and ds_show_results.rc != 255
+
+    - name: Inventory failed messsage
+      ansible.builtin.fail:
+        msg: |
+          Datastore {{ inventory_ds.key }} specified in ansible inventory file with id: {{ inventory_ds.value.id }} does not match what currently exists in OpenNebula.
+          We did not find a datastore with ID {{ inventory_ds.value.id }} but we found the name {{ inventory_ds.key }} in use by another datastore with a differing ID {{ _ds_show_json_results['DATASTORE']['ID'] }}.
+          Please fix this datastore inventory, most likely by correcting the ID on the datastore to match {{ _ds_show_json_results['DATASTORE']['ID'] }}.
+      when: ds_show_results.rc == 0
+      vars:
+        _ds_show_json_results: "{{ ds_show_results.stdout | from_json }}"
+
+    - name: "Create missing datastore {{ inventory_ds.key }}"
+      ansible.builtin.command: "onedatastore create {{ ds_template_tmp.path }}"
+      changed_when: true
+      when: ds_show_results.rc == 255
+
+- name: "Update datastores {{ inventory_ds.key }}"
+  ansible.builtin.command: "onedatastore update {{ inventory_ds.value.id }} {{ ds_template_tmp.path }} --append"
+  changed_when: false
+  when: existing_ds_dict[inventory_ds.value.id] is defined

@@ -20,6 +20,8 @@ vlans_to_import: {}
 native_vlans_to_import: {}
 vn_mac_ar_size: 254
 vm_cpu: 4
+host_cpu: .1
 vm_mem: 8097792
 vnc_start_port: 5900
 vnc_end_port: 65534
+skip_disk_backup: false
