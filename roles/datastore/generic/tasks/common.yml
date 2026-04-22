@@ -3,8 +3,8 @@
   ansible.builtin.set_fact:
     ds_names: >-
       {{ _items | map(attribute='key') | list }}
-    ds_dict: >-
-      {{ _items | items2dict }}
+    inventory_ds_list: >-
+      {{ _items }}
   vars:
     _ds: >-
       {{ ds_defaults | combine(ds.config | d({}), recursive=true) }}

@@ -1,5 +1,6 @@
 NAME = "{{ vm_name }}"
-CPU = "{{ vm_cpu }}"
+CPU = "{{ host_cpu }}"
+VCPU = "{{ vm_cpu }}"
 MEMORY = "{{ vm_mem }}"
 {% if vm_pinned_host_id != '' %}
 SCHED_REQUIREMENTS = "HYPERVISOR={{ vm_hypervisor }} & ID = {{ vm_pinned_host_id }}"

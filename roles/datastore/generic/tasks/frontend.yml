@@ -17,10 +17,12 @@
 
 - name: Parse Datastores
   ansible.builtin.set_fact:
-    ds_names_parsed: >-
-      {{ _names }}
-    ds_dict_parsed: >-
-      {{ dict(_names | zip(_datastores)) }}
+    # ds_name_dict_parsed: This is all the existing datastores before ansible modifies anything
+    # ds_dict: The datastores we are trying to add (from our inventory)
+    # existing_ds_dict: >-
+    #   {{ dict(_ids | zip(_datastores)) }}
+    existing_ds_dict: >-
+      {{ dict((_ids | map('int') | list) | zip(_datastores)) }}
   vars:
     _document: >-
       {{ shell.stdout | from_json }}
@@ -28,51 +30,26 @@
       {{ [_document.DATASTORE_POOL.DATASTORE | d([])] | flatten }}
     _names: >-
       {{ _datastores | map(attribute='NAME') | d([]) | list }}
+    _ids: >-
+      {{ _datastores | map(attribute='ID') | d([]) | list }}
 
 - when: inventory_hostname == leader
   block:
-    # NOTE: Only "system" datastores can be enabled or disabled.
-    - name: Update Datastores
-      ansible.builtin.shell:
-        cmd: |
-          set -o errexit -o pipefail
-          {% if ds_dict[item].enabled is defined %}
-          onedatastore {{ 'enable' if ds_dict[item].enabled else 'disable' }} '{{ ds_dict[item].id }}'
-          {% endif %}
-          set +o errexit
-          TEMPLATE="$(mktemp)"
-          tee "$TEMPLATE"
-          cat "$TEMPLATE" | onedatastore update '{{ ds_dict[item].id }}' "$TEMPLATE"; RC="$?"
-          rm -f "$TEMPLATE"
-          exit "$RC"
-        stdin: |
-          {{ _combined | opennebula.deploy.to_one }}
-        executable: /bin/bash
+    - name: Rename datastores
+      ansible.builtin.command: "onedatastore rename {{ item.value.ID }} {{ _target_name }}"
       changed_when: true
-      when: (_combined | opennebula.deploy.to_one != ds_dict_parsed[item].TEMPLATE | opennebula.deploy.to_one)
-            or
-            (ds_dict[item].enabled is defined and (ds_dict[item].enabled != (ds_dict_parsed[item].STATE | int == 0)))
-      loop: "{{ _existing }}"
+      when:
+        - _matching_user_ds_list | length > 0
+        - item.value.NAME != _target_name
+      loop: "{{ existing_ds_dict | dict2items }}"
       vars:
-        _existing: >-
-          {{ ds_names | select('in', ds_names_parsed) }}
-        _combined: >-
-          {{ ds_dict_parsed[item].TEMPLATE | combine(ds_dict[item].template, recursive=true) }}
+        _matching_user_ds_list: >-
+          {{ inventory_ds_list | selectattr('value.id', 'equalto', (item.key | int)) | list }}
+        _target_name: >-
+          {{ _matching_user_ds_list | map(attribute='key') | first | d('') }}
 
-    - name: Create Datastores
-      ansible.builtin.shell:
-        cmd: |
-          set +o errexit -o pipefail
-          TEMPLATE="$(mktemp)"
-          tee "$TEMPLATE"
-          cat "$TEMPLATE" | onedatastore create "$TEMPLATE"; RC="$?"
-          rm -f "$TEMPLATE"
-          exit "$RC"
-        stdin: |
-          {{ ds_dict[item].template | combine({"NAME": item}) | opennebula.deploy.to_one }}
-        executable: /bin/bash
-      changed_when: true
-      loop: "{{ _missing }}"
-      vars:
-        _missing: >-
-          {{ ds_names | reject('in', ds_names_parsed) }}
+    - name: Loop inventory datastores
+      ansible.builtin.include_tasks: ds_helper.yaml
+      loop: "{{ inventory_ds_list }}"
+      loop_control:
+        loop_var: inventory_ds
