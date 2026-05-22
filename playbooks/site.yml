@@ -58,10 +58,12 @@
   roles:
     - role: kvm
 
-    - role: ceph/node
-      tags: [ceph]
-      when:
-        - features.ceph | bool is true
+    # NOTE: Don't know why but this gets activated even when features.ceph appears to be false
+    # so commenting out now as it messes with our existing ceph that is created outside of one-deploy
+    # - role: ceph/node
+    #   tags: [ceph]
+    #   when:
+    #     - features.ceph | bool is true
 
     - role: datastore/node
       tags: [datastore]

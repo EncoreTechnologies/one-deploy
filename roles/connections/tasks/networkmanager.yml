@@ -28,7 +28,6 @@
     bond_list: "{{ networkmanager_config.bonds | d({}) | dict2items }}"
     bridge_list: "{{ networkmanager_config.bridges | d({}) | dict2items }}"
     vlan_list: "{{ networkmanager_config.vlans | d({}) | dict2items }}"
-    vlan_list: "{{ networkmanager_config.vlans | d({}) | dict2items }}"
     vm_bridge_list:  |
       {{
         vm_interface_shell.stdout_lines

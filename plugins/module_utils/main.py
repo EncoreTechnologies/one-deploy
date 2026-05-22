@@ -128,7 +128,14 @@ def diff_shared_keys(d1, d2):
     """
     if not isinstance(d1, dict) or not isinstance(d2, dict):
         return d1 != d2
-    shared_keys = set(d1.keys()) & set(d2.keys())
+
+    # If d2 contains any keys that d1 does not have, that's a difference
+    keys_d1 = set(d1.keys())
+    keys_d2 = set(d2.keys())
+    if keys_d2 - keys_d1:
+        return True
+
+    shared_keys = keys_d1 & keys_d2
     for key in shared_keys:
         v1 = d1[key]
         v2 = d2[key]
