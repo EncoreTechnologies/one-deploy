@@ -118,7 +118,7 @@
 
 - name: Check if distro family is supported
   ansible.builtin.assert:
-    that: ansible_os_family in {{ _supported }}
+    that: ansible_os_family in _supported
   vars:
     _supported:
       - Debian
@@ -126,7 +126,7 @@
 
 - name: Check if distro is supported
   ansible.builtin.assert:
-    that: ansible_distribution in {{ _supported }}
+    that: ansible_distribution in _supported
   vars:
     _supported:
       - AlmaLinux
@@ -138,7 +138,7 @@
   ansible.builtin.assert:
     that: (node_hv is undefined)
           or
-          (node_hv | lower in {{ _supported }})
+          (node_hv | lower in _supported)
     msg: Please use one of the supported hypervisors {{ _supported }}.
   vars:
     _supported:
@@ -179,32 +179,33 @@
 
 - name: Ensure input TProxy config is correctly structured
   ansible.builtin.assert:
-    that: "{{ 0 == (_loop[item].query | flatten | count) }}"
-    msg: "{{ _loop[item].msg }}: {{ _loop[item].query | to_json }}"
-  loop: "{{ range(_loop | count) }}"
+    that: "{{ 0 == (item.query | flatten | count) }}"
+    msg: "{{ item.msg }}: {{ item.query | to_json }}"
+  loop: "{{ _loop }}"
   vars:
     _required: [":service_port", ":remote_addr", ":remote_port"]
     _optional: [":networks"]
+    _gate_tproxy: "{{ gate_tproxy | d([]) }}"
     _loop:
       # Look for missing keys.
       - query: >-
-          {{ gate_tproxy | map('dict2items')
-                         | map('map', attribute='key')
-                         | map('symmetric_difference', _required)
-                         | map('intersect', _required) }}
+          {{ _gate_tproxy | map('dict2items')
+                          | map('map', attribute='key')
+                          | map('symmetric_difference', _required)
+                          | map('intersect', _required) }}
         msg: "Missing keys detected"
       # Look for unknown keys.
       - query: >-
-          {{ gate_tproxy | map('dict2items')
-                         | map('map', attribute='key')
-                         | map('difference', _required + _optional) }}
+          {{ _gate_tproxy | map('dict2items')
+                          | map('map', attribute='key')
+                          | map('difference', _required + _optional) }}
         msg: "Unknown keys detected"
       # Look for empty (invalid) values.
       - query: >-
-          {{ gate_tproxy | map('dict2items')
-                         | map('selectattr', 'key', 'in', _required)
-                         | map('selectattr', 'value', 'falsy')
-                         | map('map', attribute='key') }}
+          {{ _gate_tproxy | map('dict2items')
+                          | map('selectattr', 'key', 'in', _required)
+                          | map('selectattr', 'value', 'falsy')
+                          | map('map', attribute='key') }}
         msg: "Empty values detected"
   when:
     - gate_tproxy is defined

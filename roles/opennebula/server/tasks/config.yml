@@ -127,7 +127,7 @@
       notify:
         - Restart OpenNebula
 
-- when: sched_drs is mapping
+- when: sched_drs is defined and sched_drs is mapping
   block:
     - name: Check if drs configuration exists
       ansible.builtin.stat:
@@ -146,7 +146,7 @@
       loop: "{{ sched_drs | dict2items }}"
       when: stat_drs_conf.stat.exists is true
 
-- when: sched_rank is mapping
+- when: sched_rank is defined and sched_rank is mapping
   block:
     - name: Check if rank configuration exists
       ansible.builtin.stat:
