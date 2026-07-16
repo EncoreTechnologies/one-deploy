@@ -29,6 +29,7 @@ repos_enabled: [ceph, frr, grafana, opennebula]
 
 ###
 
+ceph_repo_enabled: true
 ceph_repo_force_trusted: false
 
 ceph_repo_key_path: {}
@@ -54,6 +55,7 @@ ceph_repo_url_defaults:
 
 ###
 
+frr_repo_enabled: true
 frr_repo_force_trusted: false
 
 frr_repo_key_path: {}
@@ -79,6 +81,7 @@ frr_repo_url_defaults:
 
 ###
 
+grafana_repo_enabled: true
 grafana_repo_force_trusted: false
 
 grafana_repo_key_path: {}
@@ -104,6 +107,7 @@ grafana_repo_url_defaults:
 
 ###
 
+opennebula_repo_enabled: true
 opennebula_repo_force_trusted: false
 
 opennebula_repo_key_path: {}
