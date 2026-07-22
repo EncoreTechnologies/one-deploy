@@ -1,5 +1,5 @@
 ---
-- when: ansible_pkg_mgr == 'dnf'
+- when: (opennebula_repo_enabled | d(true) | bool) and (ansible_pkg_mgr == 'dnf')
   block:
     - name: Compute facts (DNF)
       ansible.builtin.set_fact:
@@ -30,7 +30,8 @@
              | d([])
              | map('replace', "'", '') }}
 
-- vars:
+- when: opennebula_repo_enabled | d(true) | bool
+  vars:
     # Merge repository config with defaults.
     _repo_key_path: "{{ opennebula_repo_key_path_defaults | combine(opennebula_repo_key_path, recursive=true) }}"
     _repo_key_url: "{{ opennebula_repo_key_url_defaults | combine(opennebula_repo_key_url, recursive=true) }}"

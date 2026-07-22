@@ -1,5 +1,6 @@
 ---
-- vars:
+- when: grafana_repo_enabled | d(true) | bool
+  vars:
     # Merge repository config with defaults.
     _repo_key_path: "{{ grafana_repo_key_path_defaults | combine(grafana_repo_key_path, recursive=true) }}"
     _repo_key_url: "{{ grafana_repo_key_url_defaults | combine(grafana_repo_key_url, recursive=true) }}"
