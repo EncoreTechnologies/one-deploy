@@ -108,6 +108,8 @@
           xpath: /domain[@type]
           content: attribute
         register: hypervisorinfo
+        tags:
+          - import
 
       - name: Parse xml for memory
         community.general.xml:
@@ -115,6 +117,8 @@
           xpath: /domain/memory
           content: text
         register: meminfo
+        tags:
+          - import
 
       - name: Parse xml for cpu
         community.general.xml:
@@ -122,6 +126,8 @@
           xpath: /domain/vcpu
           content: text
         register: cpuinfo
+        tags:
+          - import
 
       - name: Parse xml for disks
         community.general.xml:
@@ -129,6 +135,8 @@
           xpath: "/domain/devices/disk[@device='disk']/source"
           content: attribute
         register: diskinfo
+        tags:
+          - import
 
       - name: Parse xml for networks
         community.general.xml:
@@ -136,6 +144,58 @@
           xpath: "/domain/devices/interface[@type='bridge']/source"
           content: attribute
         register: vnetinfo
+        tags:
+          - import
+
+      - name: Parse xml for os boot
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: /domain/os/boot
+          content: attribute
+        register: osbootinfo
+        failed_when: false
+        tags:
+          - import
+
+      - name: Parse xml for os type
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: /domain/os/type
+          content: attribute
+        register: ostypeinfo
+        failed_when: false
+        tags:
+          - import
+
+      - name: Parse xml for os loader
+        community.general.xml:
+          path: "{{ xml_dump_file }}"
+          xpath: /domain/os/loader
+          content: text
+        register: osloaderinfo
+        failed_when: false
+        tags:
+          - import
+
+      - name: Set vm os facts
+        ansible.builtin.set_fact:
+          vm_os_boot: "{{ osbootinfo.matches[0].boot.dev | default(omit) }}"
+          vm_os_machine: "{{ ostypeinfo.matches[0].type.machine | default(omit) }}"
+          vm_os_firmware: "{{ osloaderinfo.matches[0].loader | default(omit) }}"
+          vm_os_firmware_secure: >-
+            {{ "YES" if (osloaderinfo.matches[0].loader.type | default('')) == 'pflash' else omit }}
+        tags:
+          - import
+
+      - name: Set vm os facts
+        ansible.builtin.set_fact:
+          vm_os_boot: "{{ osbootinfo.matches[0].boot.dev | default(omit) }}"
+          vm_os_machine: "{{ ostypeinfo.matches[0].type.machine | default(omit) }}"
+          vm_os_firmware: "{{ osloaderinfo.matches[0].loader | default(omit) }}"
+          vm_os_firmware_secure: >-
+            {{ "YES" if (osloaderinfo.matches[0].loader.type | default('')) == 'pflash' else omit }}
+        tags:
+          - import
 
       - name: Gather network info
         ansible.builtin.include_tasks: gather_network_info.yml
@@ -162,6 +222,8 @@
           vm_mem: "{{ (meminfo.matches[0].memory | d(vm_mem) | int) // 1024 }}"
           vm_name: "{{ import_vm.key }}"
           vm_hypervisor: "{{ hypervisorinfo.matches[0].domain.type }}"
+        tags:
+          - import
 
       - name: "Shutdown vm {{ import_vm.key }} on host {{ ansible_host }}"
         ansible.builtin.command: "virsh destroy {{ import_vm.key }}"
@@ -218,6 +280,8 @@
           - name: Calculate size difference
             ansible.builtin.set_fact:
               disk_size_diff: "{{ all_vm_disk_sizes.virtual - all_vm_disk_sizes.actual }}"
+            tags:
+              - import
 
           - name: Debug disk size difference
             ansible.builtin.debug:

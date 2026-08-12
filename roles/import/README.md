@@ -17,7 +17,7 @@ Role Variables
 | `one_tmp_dir`             | `str`   | `/var/tmp/one`              | Directory where network and vm template are generated                     | 
 | `vm_register_retries`     | `int`   | `5`                         | Number of retries to wait for vm to register.  More below                 |
 | `vm_register_delay`       | `int`   | `5`                         | Number in seconds to delay between retries.  More below                   |  
-| `vms_to_import`           | `dict`  | `[]`                        | Dict of vms to import.  This should be placed                             |
+| `vms_to_import`           | `dict`  | `{}`                        | Dict of vms to import.  This should be placed                             |
 |                           |         |                             | per node                                                                  |
 |                           |         |                             | in inventory file                                                         | 
 | `vlans_to_import`         | `dict`  | `{}`                        | The vlans on node to import. This should be placed per node in            |

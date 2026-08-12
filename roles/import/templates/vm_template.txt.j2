@@ -12,6 +12,21 @@ DISK = [IMAGE_ID = "{{ id }}"]
 NIC = [NETWORK_ID = "{{ id }}"]
 {% endfor %}
 HYPERVISOR = "{{ vm_hypervisor }}"
+OS = [
+{%- set comma = joiner(',') %}
+{%- if vm_os_machine is defined %}
+{{ comma() }}  MACHINE = "{{ vm_os_machine }}"
+{%- endif %}
+{%- if vm_os_firmware is defined %}
+{{ comma() }}  FIRMWARE = "{{ vm_os_firmware }}"
+{%- endif %}
+{%- if vm_os_firmware_secure is defined %}
+{{ comma() }}  FIRMWARE_SECURE = "{{ vm_os_firmware_secure }}"
+{%- endif %}
+{%- if vm_os_boot is defined %}
+{{ comma() }}  BOOT = "{{ vm_os_boot }}"
+{%- endif %}
+]
 CONTEXT = [
   NETWORK = "YES",
   SSH_PUBLIC_KEY = "$USER[SSH_PUBLIC_KEY]"
