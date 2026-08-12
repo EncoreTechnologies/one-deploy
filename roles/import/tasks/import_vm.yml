@@ -154,6 +154,8 @@
           content: attribute
         register: osbootinfo
         failed_when: false
+        tags:
+          - import
 
       - name: Parse xml for os type
         community.general.xml:
@@ -162,6 +164,8 @@
           content: attribute
         register: ostypeinfo
         failed_when: false
+        tags:
+          - import
 
       - name: Parse xml for os loader
         community.general.xml:
@@ -170,6 +174,8 @@
           content: text
         register: osloaderinfo
         failed_when: false
+        tags:
+          - import
 
       - name: Set vm os facts
         ansible.builtin.set_fact:
@@ -178,6 +184,8 @@
           vm_os_firmware: "{{ osloaderinfo.matches[0].loader | default(omit) }}"
           vm_os_firmware_secure: >-
             {{ "YES" if (osloaderinfo.matches[0].loader.type | default('')) == 'pflash' else omit }}
+        tags:
+          - import
 
       - name: Set vm os facts
         ansible.builtin.set_fact:
@@ -186,6 +194,8 @@
           vm_os_firmware: "{{ osloaderinfo.matches[0].loader | default(omit) }}"
           vm_os_firmware_secure: >-
             {{ "YES" if (osloaderinfo.matches[0].loader.type | default('')) == 'pflash' else omit }}
+        tags:
+          - import
 
       - name: Gather network info
         ansible.builtin.include_tasks: gather_network_info.yml
