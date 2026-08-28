@@ -207,8 +207,11 @@
           - debug
 
       - name: Set vm stats
+        vars:
+          _vm_cpu: "{{ cpuinfo.matches[0].vcpu | d(vm_cpu) }}"
         ansible.builtin.set_fact:
-          vm_cpu: "{{ cpuinfo.matches[0].vcpu | d(vm_cpu) }}"
+          vm_cpu: "{{ _vm_cpu }}"
+          host_cpu: "{{ ((_vm_cpu | int) // 10) ~ '.' ~ ((_vm_cpu | int) % 10) if (_vm_cpu | int) >= 10 else '.' ~ _vm_cpu }}"
           vm_mem: "{{ (meminfo.matches[0].memory | d(vm_mem) | int) // 1024 }}"
           vm_name: "{{ import_vm.key }}"
           vm_hypervisor: "{{ hypervisorinfo.matches[0].domain.type }}"
