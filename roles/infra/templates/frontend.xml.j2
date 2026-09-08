@@ -10,7 +10,13 @@
     <partition>/machine</partition>
   </resource>
   <os>
+{% if firmware_type == 'uefi' %}
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <loader readonly='yes' {% if secure_boot %}secure='yes' {% endif %}type='pflash'>{{ uefi_loader_secure if secure_boot else uefi_loader }}</loader>
+    <nvram>{{ uefi_nvram_dir }}/{{ frontend_vm_name | d(frontend) }}_VARS.fd</nvram>
+{% else %}
     <type arch='x86_64' machine='pc'>hvm</type>
+{% endif %}
     <boot dev='hd'/>
   </os>
   <features>
@@ -37,9 +43,13 @@
       <driver name='qemu' type='raw'/>
       <source file='{{ runtime_dir }}/{{ frontend_vm_name | d(frontend) }}.iso' index='1'/>
       <backingStore/>
+{% if firmware_type == 'uefi' %}
+      <target dev='sda' bus='sata'/>
+{% else %}
       <target dev='hda' bus='ide'/>
+{% endif %}
       <readonly/>
-      <alias name='ide0-0-0'/>
+      <alias name='{{ "sata0-0-0" if firmware_type == "uefi" else "ide0-0-0" }}'/>
     </disk>
 
     {% if disk_bus_type == 'scsi' %}
@@ -65,13 +75,19 @@
       <alias name='scsi0'/>
     </controller>
 
+{% if firmware_type == 'uefi' %}
+    <controller type='pci' index='0' model='pcie-root'>
+{% else %}
     <controller type='pci' index='0' model='pci-root'>
+{% endif %}
       <alias name='pci.0'/>
     </controller>
 
+{% if firmware_type != 'uefi' %}
     <controller type='ide' index='0'>
       <alias name='ide'/>
     </controller>
+{% endif %}
 
 {% for fs in passthrough_fs %}
     <filesystem type='mount' accessmode='passthrough'>
@@ -97,11 +113,11 @@
     </interface>
     {% endfor %}
 
-    <input type='mouse' bus='ps2'>
+    <input type='mouse' bus='{{ "usb" if firmware_type == "uefi" else "ps2" }}'>
       <alias name='input0'/>
     </input>
 
-    <input type='keyboard' bus='ps2'>
+    <input type='keyboard' bus='{{ "usb" if firmware_type == "uefi" else "ps2" }}'>
       <alias name='input1'/>
     </input>
 

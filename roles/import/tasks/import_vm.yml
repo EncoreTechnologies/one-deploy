@@ -187,16 +187,6 @@
         tags:
           - import
 
-      - name: Set vm os facts
-        ansible.builtin.set_fact:
-          vm_os_boot: "{{ osbootinfo.matches[0].boot.dev | default(omit) }}"
-          vm_os_machine: "{{ ostypeinfo.matches[0].type.machine | default(omit) }}"
-          vm_os_firmware: "{{ osloaderinfo.matches[0].loader | default(omit) }}"
-          vm_os_firmware_secure: >-
-            {{ "YES" if (osloaderinfo.matches[0].loader.type | default('')) == 'pflash' else omit }}
-        tags:
-          - import
-
       - name: Gather network info
         ansible.builtin.include_tasks: gather_network_info.yml
         vars:
@@ -217,8 +207,11 @@
           - debug
 
       - name: Set vm stats
+        vars:
+          _vm_cpu: "{{ cpuinfo.matches[0].vcpu | d(vm_cpu) }}"
         ansible.builtin.set_fact:
-          vm_cpu: "{{ cpuinfo.matches[0].vcpu | d(vm_cpu) }}"
+          vm_cpu: "{{ _vm_cpu }}"
+          host_cpu: "{{ ((_vm_cpu | int) // 10) ~ '.' ~ ((_vm_cpu | int) % 10) if (_vm_cpu | int) >= 10 else '.' ~ _vm_cpu }}"
           vm_mem: "{{ (meminfo.matches[0].memory | d(vm_mem) | int) // 1024 }}"
           vm_name: "{{ import_vm.key }}"
           vm_hypervisor: "{{ hypervisorinfo.matches[0].domain.type }}"
