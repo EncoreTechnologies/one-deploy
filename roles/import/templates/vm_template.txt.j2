@@ -24,7 +24,7 @@ OS = [
 {{ comma() }}  FIRMWARE_SECURE = "{{ vm_os_firmware_secure }}"
 {%- endif %}
 {%- if vm_os_boot is defined %}
-{{ comma() }}  BOOT = "{{ vm_os_boot }}"
+{{ comma() }}  BOOT = "{{ vm_os_boot | regex_replace('\\bhd\\b', 'disk0') | regex_replace('\\bnetwork\\b', 'nic0') | regex_replace('\\bcdrom\\b', 'disk0') }}"
 {%- endif %}
 ]
 CONTEXT = [

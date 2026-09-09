@@ -114,5 +114,6 @@
   community.libvirt.virt:
     name: "{{ frontend_vm_name | d(frontend) }}"
     state: running
+    autostart: "{{ autostart_frontend_vm }}"
   loop_control: { loop_var: frontend }
   loop: "{{ infra_to_frontends[inventory_hostname] }}"

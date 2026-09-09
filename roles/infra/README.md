@@ -26,8 +26,14 @@ Role Variables
 | `infra_bridge`           | `str`  | `br0`              |                     | Pre-defined bridge interface to insert VM NICs to.                |
 | `passthrough_fs`         | `list` | `[]`               | (check below)       | Shared HV filesystems to attach to the Front-end VMs.             |
 | `disk_bus_type`          | `str`  | `scsi`             |                     | Disk bus type for primary disk on fe                              |
+| `firmware_type`          | `str`  | `bios`             |                     | Firmware type: `bios` or `uefi`.                                  |
+| `secure_boot`            | `bool` | `false`            |                     | Enable UEFI Secure Boot (UEFI only).                              |
+| `uefi_loader`            | `str`  | `/usr/share/OVMF/OVMF_CODE.fd` |         | Path to OVMF firmware code file (non-secure boot).                |
+| `uefi_loader_secure`     | `str`  | `/usr/share/OVMF/OVMF_CODE.secboot.fd` | | Path to OVMF firmware code file with Secure Boot support.         |
+| `uefi_nvram_dir`         | `str`  | `/var/lib/libvirt/qemu/nvram` |          | Directory for UEFI NVRAM variable store files.                    |
 | `infra_hostname`         | `str`  |                    | `n1a1`              | Defines on which HV machine the Front-end VM should be deployed.  |
 | `frontend_vm_name`       | `str`  |                    | `onecloud-01`       | Override for frontend vm seen in virsh                            |
+| `autostart_frontend_vm`  | `bool` | `false`            |                     | Whether to set the Front-end VM to autostart when the libvirt host boots. |
 | `context_networks`       | `list` |                    | (check below)       | List of network contexts where each one represents a different nic|
 | `context.GROW_FS`        | `str`  | `/`                |                     | Filesystems to grow.                                              |
 | `context.GROW_ROOTFS`    | `bool` | yes                |                     | Determines whether to grow root filesystem automatically          |
